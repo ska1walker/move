@@ -117,20 +117,36 @@ def main() -> int:
 
         zuordnung = [zuordnen(f) for f in farben]
 
-        print("  #  Plan-Start  erstes reines Bild  Abweichung")
+        # Ein harter Schnitt hat eine scharfe Grenze und muss auf dem Bild
+        # liegen, das der Plan nennt -- daran haengt die ganze Zusage, dass
+        # der Schnitt Arithmetik ist.
+        #
+        # Das Ende einer Blende ist weicher. Gemessen: ffmpeg 5.1 (das
+        # Worker-Image) laesst die Rampe ein Bild frueher auslaufen als
+        # 6.1.1, der Versatz stimmt in beiden. Ein Bild Toleranz, und die
+        # Toleranz steht in der Ausgabe, damit sie niemand fuer Genauigkeit
+        # haelt.
+        print("  #  Uebergang   Plan-Start  erstes reines Bild  Abweichung  erlaubt")
         fehler = 0
         for i in range(len(template.cuts)):
             # Erstes Bild, ab dem nur noch diese Einstellung zu sehen ist.
             erstes = next((n for n, z in enumerate(zuordnung) if z == i), None)
             soll = plan.start[i] + plan.fade[i]
+            art = "Blende" if plan.fade[i] else "Schnitt"
+            toleranz = 1 if plan.fade[i] else 0
+
             if erstes is None:
-                print(f" {i:2d}  {soll:10d}  {'nie':>18}  --")
+                print(f" {i:2d}  {art:10s}  {soll:10d}  {'nie':>18}  --          +-{toleranz}")
                 fehler += 1
                 continue
+
             abweichung = erstes - soll
-            if abweichung:
+            if abs(abweichung) > toleranz:
                 fehler += 1
-            print(f" {i:2d}  {soll:10d}  {erstes:18d}  {abweichung:+d}")
+            print(
+                f" {i:2d}  {art:10s}  {soll:10d}  {erstes:18d}  "
+                f"{abweichung:+10d}  +-{toleranz}"
+            )
 
         print("\nBildfolge (Zahl = Einstellung, '.' = Blende oder unklar):")
         zeile = "".join("." if z is None else str(z % 10) for z in zuordnung)
@@ -138,9 +154,9 @@ def main() -> int:
             print(f"  {start:4d} {zeile[start : start + 100]}")
 
         if fehler:
-            print(f"\n{fehler} Einstellung(en) liegen nicht auf dem Plan")
+            print(f"\n{fehler} Einstellung(en) liegen ausserhalb der Toleranz")
             return 1
-        print("\nalle Einstellungen liegen auf dem Plan")
+        print("\nalle Einstellungen liegen im Rahmen; harte Schnitte exakt")
         return 0
 
 

@@ -112,6 +112,21 @@ und faellt auf 0 zurueck, aeltere Templates bleiben lesbar.
 | `drawtext` zeichnet nichts, ffmpeg endet mit 0 | stderr auf `Parsed_drawtext` pruefen -- der Fehler ist nicht fatal |
 | `drawtext=timecode=...` scheitert mit "Both text and text file provided" | In ffmpeg 6.1.1 kaputt, auch ohne `text`. Stattdessen `text=%{pts\\:hms}`, das zeigt ohnehin Millisekunden |
 | Filtergraph verschluckt einen Doppelpunkt | Zwei Entpack-Durchgaenge: `:` braucht **zwei** Backslashes, `,` nur einen |
+| Harter Schnitt liegt ein Bild zu spaet, Laufzeit und Bildzahl stimmen trotzdem | `concat` rechnet den Versatz aus den PTS des ersten Stroms. Nach `xfade` liegen die in ffmpeg 5.1 auf einem Mikrosekunden-Raster, das aufrundet. `settb=1/fps,setpts=N` nach jedem Schritt |
+
+## Was von der ffmpeg-Version abhaengt
+
+Gemessen mit `tools/schnittgrenzen.py` im gebauten Image (ffmpeg 5.1,
+Debian bookworm) gegen ffmpeg 6.1.1:
+
+- **Harte Schnitte liegen exakt auf dem geplanten Bild**, in beiden Versionen.
+  Daran haengt die Zusage, dass der Schnitt Arithmetik ist.
+- **Das Ende einer Blende kann um ein Bild abweichen.** 5.1 laesst die Rampe
+  ein Bild frueher auslaufen als 6.1.1; der Versatz stimmt in beiden, weil
+  `xfade` ihn in Sekunden vorgegeben bekommt. Das Messwerkzeug erlaubt dort
+  ein Bild und schreibt die Toleranz in die Ausgabe.
+- **Byteweise Reproduzierbarkeit gilt je Umgebung**, nicht ueber
+  ffmpeg-Versionen hinweg.
 
 ## Datenhaltung
 
