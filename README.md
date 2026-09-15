@@ -54,6 +54,44 @@ Image-Tags aus `.Chart.AppVersion`, kein GPU-Bedarf in v0.
 | ghcr-Pakete auf Public stellen | Einmalig nach dem ersten Push. Pakete sind auch in einem öffentlichen Repo zunächst privat. |
 | `docs/design-guide.md` | s. o. — die Oberfläche folgt bisher der Zusammenfassung im Platzhalter, nicht dem Original. |
 | erster echter fal-Aufruf | Die Generierung ist gebaut und getestet, aber nur gegen ein Doppel. fal.ai ist vom Proxy gesperrt. |
+| Eintrag in einer Market Source | Der eigentliche Grund, warum move nirgends im Marktplatz auftaucht. S. u. |
+
+## Warum move nicht im Marktplatz steht
+
+Weil eine App nicht dadurch in den Marktplatz kommt, dass sie hier im Repo
+liegt. Eine **Market Source ist ein eigener Webdienst** (bei AImighty:
+Cloudflare Pages, Repo `bayerhazard/aimighty-market`). Sie listet die App
+unter `/api/v1/appstore/info` und liefert das Chart unter
+`/api/v1/applications/move/chart?fileName=move-26.9.1.tgz`. Das Chart steckt
+dort als base64 in einer Tabelle. In **move ist noch nichts davon eingetragen** —
+dieses Repo enthält nur das Chart selbst.
+
+`scripts/paket.sh` erzeugt genau die Stücke, die dort hineingehören:
+
+```bash
+./scripts/paket.sh          # braucht helm und PyYAML
+```
+
+| Datei | wohin |
+|---|---|
+| `dist/move-26.9.1.tgz` | das gepackte Chart |
+| `dist/move-26.9.1.tgz.base64` | eine Zeile, als Wert unter dem Schlüssel `"move-26.9.1.tgz"` |
+| `dist/markteintrag.json` | die Metadatenfelder, aus dem Manifest gelesen |
+
+Der CI-Job **Chart-Paket** führt das bei jedem Push mit echtem Helm aus und
+hängt die drei Dateien als Artefakt an den Lauf. Damit fällt ein Packfehler
+beim Commit auf und nicht erst beim Release, und das base64 liegt nie
+veraltet im Repo.
+
+Eingebaut sind drei Regeln, die je für eine echte Ablehnung stehen: nie ein
+Chart packen, das `check-chart.sh` nicht besteht; den **gepackten** Tarball
+linten, nicht den Ordner; und nur **einmal** gzippen — ein zweites Mal meldet
+die Box als `invalid tar header`. Das base64 wird nach dem Schreiben
+zurückdekodiert und byteweise gegen den Tarball verglichen.
+
+Danach, und erst danach, installieren und `running` auf der Box **messen**.
+Eine App, die nie `running` erreicht hat, gehört in keinen Markt — und move
+hat es nie erreicht.
 
 ## Nutzereingaben bei der Installation
 

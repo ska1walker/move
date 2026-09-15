@@ -244,11 +244,46 @@ jobs:
         if: always()
         run: docker rm -f moveweb 2>/dev/null || true
 
+  chart-paket:
+    name: Chart-Paket
+    # Laeuft bei jedem Push, damit ein Packfehler nicht erst am Release
+    # auffaellt. Das Ergebnis haengt als Artefakt am Lauf: die Market Source
+    # ist ein eigenes Repo, und diese beiden Dateien sind alles, was sie von
+    # hier braucht.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.3
+
+      - name: PyYAML
+        run: python3 -m pip install --quiet pyyaml
+
+      - name: paket.sh
+        run: ./scripts/paket.sh
+
+      - name: Version lesen
+        id: version
+        run: echo "v=$(grep -E '^version:' move/Chart.yaml | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chart-${{ steps.version.outputs.v }}
+          path: |
+            dist/move-${{ steps.version.outputs.v }}.tgz
+            dist/move-${{ steps.version.outputs.v }}.tgz.base64
+            dist/markteintrag.json
+          if-no-files-found: error
+
   publish:
     name: Images nach ghcr
     # Nur nach einem gruenen Lauf. Eine App, die nie gruen war, gehoert in
     # keine Registry.
-    needs: [guards, worker-tests, web-typecheck, worker-image, web-image]
+    needs: [guards, worker-tests, web-typecheck, worker-image, web-image, chart-paket]
     # Nicht bei jedem Push. Entweder ein Versions-Tag oder ein bewusster
     # Klick auf "Run workflow" mit gesetztem Haken.
     if: >-
