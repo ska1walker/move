@@ -121,6 +121,14 @@ Die drei `tsc`-Fehler sind Bestand in Marcs Repo (`invisible` an beacons
 zweitem Entrance, zweimal `appDescription` in `_lib.ts`). Der move-Eintrag
 bringt keinen einzigen neuen.
 
+**`helm package` ist nicht bitgleich über Läufe hinweg.** Gemessen an zwei
+CI-Läufen, deren `move/`-Inhalt sich nicht unterschied (geändert war nur
+`.github/`): die base64 endeten auf `…rxmORAFgAAA=` und `…BtxPIAWAAA=`. Helm
+übernimmt die Änderungszeiten der Dateien in den Tarball, und die kommen aus
+dem Checkout. Folge für die Praxis: **`_apps.ts`-Block und `CHARTS`-Zeile
+immer aus DEMSELBEN Lauf nehmen.** Eine Prüfsumme aus einem anderen Lauf
+passt nicht, und das ist kein Fehler.
+
 **Das Skript ist der belastbare Weg, der Patch die Bequemlichkeit.** Der
 Patch ist rund 154 KB groß, und 146 KB davon sind Kontextzeilen **fremder
 Apps**: im `CHARTS`-Dict steht direkt neben unserer Einfügung `insilo` mit

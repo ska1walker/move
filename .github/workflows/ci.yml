@@ -350,6 +350,9 @@ jobs:
           sha256sum "dist/move-$(grep -E '^version:' move/Chart.yaml | awk '{print $2}').tgz"
           echo '===== base64, umbrochen bei 100 Zeichen ====='
           fold -w 100 "dist/move-$(grep -E '^version:' move/Chart.yaml | awk '{print $2}').tgz.base64"
+          # Die base64-Datei endet ohne Zeilenumbruch, sonst klebt die
+          # Schlussmarke an das letzte Stueck und verfaelscht es.
+          echo
           echo '===== Ende ====='
 
       - uses: actions/upload-artifact@v4
