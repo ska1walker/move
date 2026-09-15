@@ -67,18 +67,6 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Secret vorhanden?
-        if: ${{ inputs.trockenlauf == false }}
-        env:
-          MARKT_TOKEN: ${{ secrets.MARKT_TOKEN }}
-        run: |
-          if [ -z "$MARKT_TOKEN" ]; then
-            echo "Das Secret MARKT_TOKEN fehlt. Einrichtung steht im Kopf dieser Datei."
-            echo "Ohne Secret laeuft nur der Trockenlauf."
-            exit 1
-          fi
-          echo "MARKT_TOKEN ist gesetzt."
-
       - name: PyYAML
         run: python3 -m pip install --quiet pyyaml
 
@@ -113,6 +101,21 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.MARKT_TOKEN }}
         run: |
+          # Die Pruefung steht ABSICHTLICH hier und nicht am Anfang: so
+          # entsteht der Patch als Artefakt auch dann, wenn das Secret noch
+          # fehlt. Ein Lauf, der nichts hinterlaesst, hilft niemandem.
+          if [ -z "$GH_TOKEN" ]; then
+            echo "Das Secret MARKT_TOKEN fehlt -- nicht gepusht, kein PR."
+            echo "Der Patch haengt trotzdem als Artefakt 'marktpatch' an diesem Lauf"
+            echo "und ist mit 'git am' anwendbar."
+            echo
+            echo "Einrichten: Settings -> Secrets and variables -> Actions"
+            echo "  Name  MARKT_TOKEN"
+            echo "  Wert  feingranulares Token nur fuer bayerhazard/aimighty-market,"
+            echo "        Contents und Pull requests auf Read and write."
+            exit 1
+          fi
+
           version="$(grep -E '^version:' move/Chart.yaml | awk '{print $2}')"
           branch="move-$version"
 
