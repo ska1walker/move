@@ -327,6 +327,23 @@ jobs:
           echo '--- Statistik ---'
           git -C dist/markt show --stat --oneline HEAD | head -20
 
+      - name: Eintrag ins Log
+        # Beides steht hier im Klartext, damit der Eintrag OHNE Download des
+        # Artefakts rekonstruierbar ist. Aus den Entwicklungsumgebungen dieses
+        # Projekts ist der Artefakt-Blob von Actions nicht erreichbar
+        # (connect_rejected), das Joblog dagegen schon.
+        #
+        # Kein Geheimnis: das Paket enthaelt Chart.yaml, values.yaml, die
+        # Manifeste und die Templates. In values.yaml darf per Projektregel
+        # nie ein Schluessel stehen, und der FAL_KEY kommt erst zur
+        # Installationszeit aus der Nutzereingabe.
+        run: |
+          echo '===== _apps.ts: Block ====='
+          cat dist/_apps-eintrag.ts
+          echo '===== _lib.ts: eine Zeile fuer das CHARTS-Dict ====='
+          cat dist/_lib-eintrag.txt
+          echo '===== Ende ====='
+
       - uses: actions/upload-artifact@v4
         with:
           name: marktpatch
