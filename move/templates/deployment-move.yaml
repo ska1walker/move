@@ -1,0 +1,106 @@
+# Frontend: Next.js 15 standalone. Traegt den einzigen Entrance, die UI, die
+# JSON-API, die Job-Anlage und die Upload-Annahme.
+#
+# metadata.name ist literal. Das Label app: move muss stehen, sonst findet der
+# Service keine Endpoints.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: move
+  labels:
+    app: move
+spec:
+  # Nie fest verdrahten: app-service rendert mit 0 und skaliert danach hoch.
+  replicas: {{ (index .Values.workloads "move").replicaCount }}
+  # hostPath erzwingt Recreate. RollingUpdate liesse zwei Pods auf dasselbe
+  # Host-Verzeichnis laufen; der Markt lehnt die Kombination mit HTTP 400 ab.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: move
+  template:
+    metadata:
+      labels:
+        app: move
+    spec:
+      initContainers:
+        # hostPath gehoert root und ueberdeckt das chown aus dem Dockerfile;
+        # fsGroup greift nicht. Dieser Container chownt nur die eigenen
+        # Unterordner. Root ist nur aus einem beclab-Image erlaubt.
+        - name: init-appdata
+          image: "docker.io/beclab/aboveos-busybox:1.37.0"
+          securityContext:
+            runAsUser: 0
+          command:
+            - sh
+            - -c
+            - mkdir -p /app/data/db /app/data/uploads && chown -R 1000:1000 /app/data/db /app/data/uploads
+          volumeMounts:
+            - name: appdata
+              mountPath: /app/data
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+      containers:
+        - name: move
+          image: "ghcr.io/ska1walker/move:{{ .Values.images.web.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            allowPrivilegeEscalation: false
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          env:
+            - name: NODE_ENV
+              value: production
+            # Das Standalone-Image lauscht nur auf $HOSTNAME.
+            - name: HOSTNAME
+              value: 0.0.0.0
+            - name: PORT
+              value: "3000"
+            # Pfad IM Container. .Values.userspace.appData ist der Host-Pfad
+            # und gehoert nicht in die Anwendung.
+            - name: MOVE_DATA_DIR
+              value: /app/data
+          volumeMounts:
+            - name: appdata
+              mountPath: /app/data
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+          # /api/health muss das Frontend mitbringen, bevor zum ersten Mal
+          # installiert wird — sonst CrashLoop trotz korrektem Chart.
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            periodSeconds: 30
+            failureThreshold: 6
+      volumes:
+        - name: appdata
+          hostPath:
+            path: {{ .Values.userspace.appData }}
+            type: DirectoryOrCreate

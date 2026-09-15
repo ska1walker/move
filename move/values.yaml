@@ -1,0 +1,27 @@
+# values.yaml ist oeffentlich. Keine Schluessel, keine Default-Secrets.
+#
+# Die userspace-Pfade injiziert Olares zur Installationszeit; sie stehen
+# bewusst nicht hier. Fuer helm lint/template ausserhalb der Box dient
+# values-olares-stub.yaml.
+
+workloads:
+  move:
+    replicaCount: 1
+  moveworker:
+    replicaCount: 1
+
+# Leer lassen. Der Tag kommt aus .Chart.AppVersion.
+#
+# Grund: ein Markt-Upgrade spielt die bei der ERSTinstallation gespeicherten
+# Werte zurueck und uebernimmt die Vorgaben des neuen Charts nicht. Ein Tag,
+# der hier steht, friert die Images damit dauerhaft ein — die Kachel meldet
+# dann die neue Version, waehrend die alten Pods laufen. Chart-Metadaten
+# kommen dagegen frisch an.
+#
+# Ein Wert hier ist nur bei einem reinen Chart-Release richtig, wenn die
+# Images absichtlich zurueckgehalten werden sollen.
+images:
+  web:
+    tag: ""
+  worker:
+    tag: ""

@@ -1,0 +1,17 @@
+# Nur das Frontend bekommt einen Service, und nur als ClusterIP.
+# Der Name muss dem Entrance-host entsprechen.
+apiVersion: v1
+kind: Service
+metadata:
+  name: move
+  labels:
+    app: move
+spec:
+  type: ClusterIP
+  selector:
+    app: move
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+      protocol: TCP

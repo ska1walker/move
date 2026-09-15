@@ -1,0 +1,7 @@
+# Der Stub ist ein Werkzeug fuer helm lint/template ausserhalb der Box und
+# gehoert nicht in das ausgelieferte Chart.
+values-olares-stub.yaml
+
+.git/
+.gitignore
+*.tgz

@@ -1,0 +1,10 @@
+apiVersion: v2
+name: move
+description: Cut templates as timestamps, applied deterministically with ffmpeg
+type: application
+
+# Strikte SemVer ohne fuehrende Null im Monatsfeld. version, appVersion,
+# OlaresManifest metadata.version und spec.versionName muessen gleich sein.
+# Der Image-Tag haengt an appVersion, nicht an values.yaml.
+version: 26.9.1
+appVersion: 26.9.1

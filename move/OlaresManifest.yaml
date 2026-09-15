@@ -1,0 +1,100 @@
+# OlaresManifest.yaml — move
+#
+# Diese Datei liegt zweimal byteweise identisch im Repo: hier im Chart und im
+# Repo-Root. Der Store liest das Root-Manifest, die Installation das
+# Chart-Manifest. scripts/check-chart.sh vergleicht beide, sonst driftet die
+# Kopie still.
+#
+# Aenderungen hier IMMER in beide Dateien. Und jede Aenderung braucht eine neue
+# Version — der Katalog-Hash entsteht aus ID:name:version, eine reine
+# Textaenderung loest keinen Re-Sync aus.
+
+olaresManifest.version: '0.12.0'
+olaresManifest.type: app
+apiVersion: 'v3'
+
+# Pflicht, oberste Ebene. Beide Deployments werden hier aufgefuehrt; die
+# Templates lesen den Wert ueber .Values.workloads.<name>.replicaCount, weil
+# app-service mit 0 rendert und danach hochskaliert.
+workloadReplicas:
+  move: 1
+  moveworker: 1
+
+metadata:
+  name: move
+  appid: move
+  icon: https://raw.githubusercontent.com/ska1walker/move/main/icon.png
+  title: Move
+  version: 26.9.1
+  description: Cut templates as timestamps, applied deterministically with ffmpeg
+  categories:
+    - Utilities
+
+# Genau EIN Entrance. Ein zweiter wuerde die Adresse des ersten aendern, und
+# der Worker braucht ohnehin keinen: er spricht nie HTTP, sondern pollt die
+# Job-Tabelle.
+entrances:
+  - name: move
+    port: 3000
+    host: move
+    title: Move
+    icon: https://raw.githubusercontent.com/ska1walker/move/main/icon.png
+    openMethod: window
+    authLevel: private
+
+spec:
+  versionName: 26.9.1
+  fullDescription: |
+    Move builds videos from cut templates.
+
+    **Cut templates** A cut template is not a model. It is a list of
+    timestamps: cut points, pacing, transition kinds and a beat grid,
+    extracted statistically from a reference clip and stored as JSON.
+
+    **Assembly** The assembler takes one cut template plus N clips and renders
+    a finished MP4 with ffmpeg. The edit is arithmetic, not inference, so the
+    same template and the same clips always produce the same file.
+
+    **Uploads** Source footage is uploaded by the user. Move ships no
+    downloader.
+
+    **Resource usage** CPU only. No GPU is requested in this version.
+  upgradeDescription: |
+    26.9.1: First release. Chart skeleton, single entrance, SQLite on appData.
+    Deterministic cut assembler with placeholder clips. No model inference in
+    this version. Built for Olares 1.12.6.
+  developer: kaivo.studio
+  submitter: kaivo.studio
+  website: https://kaivo.studio
+  sourceCode: https://github.com/ska1walker/move
+  locale:
+    - en
+  supportArch:
+    - amd64
+  # Summe ALLER Container einschliesslich Init-Container muss hier
+  # hineinpassen, sonst lehnt der Upload mit HTTP 400 ab. Gerechnet:
+  #   requests  1220m / 2592Mi     limits  5200m / 9344Mi
+  # ffmpeg und spaeter TransNetV2 sind bewusst grosszuegig angesetzt.
+  requiredCpu: 2000m
+  limitedCpu: 6000m
+  requiredMemory: 4Gi
+  limitedMemory: 12Gi
+  requiredDisk: 20Gi
+
+# appData ueberlebt die Deinstallation und traegt SQLite, Uploads,
+# Zwischenclips und Renderergebnisse.
+permission:
+  appData: true
+
+options:
+  # 0, sonst kappt der Envoy-Sidecar jede Antwort nach 15 s — ein Render oder
+  # ein grosser Upload laeuft laenger.
+  apiTimeout: 0
+  # String. Als Zahl oder Bool scheitert der Parser.
+  runAsUser: "1000"
+  # Fuer die Modellgewichte, die ab Schritt 8 (TransNetV2) geladen werden.
+  allowedOutboundPorts:
+    - 443
+  dependencies:
+    - name: olares
+      version: '>=1.12.6-0'

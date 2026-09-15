@@ -130,6 +130,17 @@ else
   else
     fail "root spec.versionName ($ROOT_MANIFEST_VERSIONNAME) != chart ($MANIFEST_VERSIONNAME)"
   fi
+
+  # Nicht nur die Version vergleichen. Titel, Kategorien, Beschreibungen und
+  # Ressourcen driften sonst still auseinander — und weil eine reine
+  # Textaenderung den Katalog-Hash nicht bewegt, faellt das erst auf, wenn der
+  # Store etwas anderes zeigt als die installierte App.
+  if diff -q "$ROOT_MANIFEST_FILE" "$MANIFEST_FILE" >/dev/null 2>&1; then
+    ok "root und chart Manifest sind byteweise identisch"
+  else
+    fail "root und chart Manifest weichen ab — die Kopie driftet still:"
+    diff "$ROOT_MANIFEST_FILE" "$MANIFEST_FILE" | sed 's/^/      /' || true
+  fi
 fi
 
 # ---------------------------------------------------------------------------

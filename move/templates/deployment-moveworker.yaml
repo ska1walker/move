@@ -1,0 +1,78 @@
+# Worker: Python 3.11, Extraktion und ffmpeg.
+#
+# Kein Entrance und kein Service. Der Envoy-Sidecar faengt jeden eingehenden
+# TCP-Verkehr ab, auch clusterinternen — ein Aufruf vom eigenen Pod auf einen
+# Entrance-Service endet in 401. Der Worker kommuniziert deshalb ausschliesslich
+# ueber die Job-Tabelle. Das ist der Grund fuer das Polling, nicht Bequemlichkeit.
+#
+# Das Label ist bewusst app: moveworker, nicht app: move — mit app: move wuerde
+# der Service des Frontends den Worker als Endpoint aufnehmen.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: moveworker
+  labels:
+    app: moveworker
+spec:
+  replicas: {{ (index .Values.workloads "moveworker").replicaCount }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: moveworker
+  template:
+    metadata:
+      labels:
+        app: moveworker
+    spec:
+      initContainers:
+        - name: init-appdata
+          image: "docker.io/beclab/aboveos-busybox:1.37.0"
+          securityContext:
+            runAsUser: 0
+          command:
+            - sh
+            - -c
+            - mkdir -p /app/data/work /app/data/renders && chown -R 1000:1000 /app/data/work /app/data/renders
+          volumeMounts:
+            - name: appdata
+              mountPath: /app/data
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+      containers:
+        - name: moveworker
+          image: "ghcr.io/ska1walker/moveworker:{{ .Values.images.worker.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            allowPrivilegeEscalation: false
+          env:
+            - name: MOVE_DATA_DIR
+              value: /app/data
+            # Ein Worker-Pod, ein Job zur Zeit. Die Queue nimmt den aeltesten
+            # Job mit BEGIN IMMEDIATE und status='queued'.
+            - name: MOVE_QUEUE_CONCURRENCY
+              value: "1"
+            - name: MOVE_POLL_INTERVAL_MS
+              value: "2000"
+          volumeMounts:
+            - name: appdata
+              mountPath: /app/data
+          resources:
+            requests:
+              cpu: 1000m
+              memory: 2Gi
+            limits:
+              cpu: 4000m
+              memory: 8Gi
+      volumes:
+        - name: appdata
+          hostPath:
+            path: {{ .Values.userspace.appData }}
+            type: DirectoryOrCreate
