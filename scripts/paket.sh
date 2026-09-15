@@ -137,53 +137,8 @@ rm "$DIST/probe.tgz"
 green "  + $TGZ.base64 ($(stat -c%s "$TGZ.base64") Zeichen), Rueckprobe byteweise gleich"
 
 echo
-echo "-- Metadaten aus dem Manifest --"
-python3 - "$APP" "$VERSION" "$TGZ" <<'PY'
-import hashlib, json, sys
-import yaml
-
-app, version, tgz = sys.argv[1], sys.argv[2], sys.argv[3]
-m = yaml.safe_load(open("OlaresManifest.yaml"))
-meta, spec = m["metadata"], m["spec"]
-
-# Aus dem Manifest gelesen, nicht abgeschrieben: was hier steht, kann nicht
-# gegen das ausgelieferte Chart driften.
-eintrag = {
-    "chartName": f"{app}-{version}.tgz",
-    "metadata": {
-        "name": meta["name"],
-        "appid": meta["appid"],
-        "version": str(meta["version"]),
-        "icon": meta["icon"],
-        "title": meta["title"],
-        "description": meta["description"],
-        "categories": meta["categories"],
-        "fullDescription": spec["fullDescription"],
-        "upgradeDescription": spec["upgradeDescription"],
-        "developer": spec["developer"],
-        "website": spec["website"],
-        "sourceCode": spec["sourceCode"],
-        "versionName": str(spec["versionName"]),
-        "resources": {
-            k: spec[k]
-            for k in (
-                "requiredCpu", "limitedCpu",
-                "requiredMemory", "limitedMemory",
-                "requiredDisk",
-            )
-        },
-    },
-    "spec": {"entrance": m["entrances"][0]},
-    # Die Adresse der App leitet sich hieraus ab, nicht aus dem Namen.
-    "appidHinweis": hashlib.md5(app.encode()).hexdigest()[:8],
-}
-
-json.dump(eintrag, open("dist/markteintrag.json", "w"), indent=2, ensure_ascii=False)
-print(f"  + dist/markteintrag.json")
-print(f"  + chartName        {eintrag['chartName']}")
-print(f"  + Tabellenschluessel  \"{eintrag['chartName']}\"")
-print(f"  + Adresse beginnt mit {eintrag['appidHinweis']}")
-PY
+echo "-- Eintrag fuer die Market Source --"
+python3 scripts/markteintrag.py "$APP" "$VERSION" "$DIST"
 
 echo
 green "Paket fertig. Version $VERSION."
@@ -194,7 +149,8 @@ Was damit zu tun ist, in der Market Source (eigenes Repo, nicht dieses):
   1. Den Inhalt von $TGZ.base64 als Wert unter dem
      Schluessel "$APP-$VERSION.tgz" in die Chart-Tabelle eintragen.
      Nie ein altes base64 wiederverwenden.
-  2. Die Felder aus $DIST/markteintrag.json in den App-Eintrag uebernehmen.
+  2. Den Block aus $DIST/_apps-eintrag.ts in das apps-Array in
+     functions/_apps.ts einfuegen.
   3. Market Source committen UND deployen, dann den Sync abwarten.
 
 Danach, und erst danach, installieren und 'running' auf der Box MESSEN.
