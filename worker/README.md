@@ -7,7 +7,10 @@ Kein Modell, keine Inferenz. Nur Standardbibliothek und ffmpeg.
 ## Der Container
 
 ```bash
-docker build -t moveworker:26.9.1 worker/
+# Baukontext ist das Repo-Wurzelverzeichnis, nicht worker/ --
+# db/schema.sql liegt ausserhalb und wird von Web und Worker gelesen.
+docker build -f worker/Dockerfile -t moveworker:26.9.1 .
+
 docker run --rm -v /pfad/zu/appdata:/app/data moveworker:26.9.1 \
   enqueue --template /app/examples/beat-8s.json
 docker run --rm -v /pfad/zu/appdata:/app/data moveworker:26.9.1
@@ -130,13 +133,18 @@ Debian bookworm) gegen ffmpeg 6.1.1:
 
 ## Datenhaltung
 
-SQLite auf `/app/data/db/move.sqlite3`, WAL-Modus. Alles SQL steht in
+SQLite auf `/app/data/db/move.sqlite3`, WAL-Modus. Alle Abfragen stehen in
 `repository.py` und nirgends sonst -- der Wechsel auf die Olares-Postgres in
 v1 soll genau eine Datei betreffen.
 
-Das Schema steht dort als Konstante und nicht unter `db/migrations/`: jener
-Ordner ist fuer die Postgres-Migrationen gedacht, die ueber eine ConfigMap
-ins Chart wandern. Fuer SQLite waere das ein Umweg ueber den Cluster.
+Die DDL steht in `../db/schema.sql` und wird von Web **und** Worker gelesen.
+Zwei Schemata in zwei Sprachen driften still auseinander: ein fehlender CHECK
+nimmt kaputte Daten an, ein fehlender Index macht nur langsam. Beide Images
+kopieren die Datei, die CI vergleicht sie gegen das Repo.
+
+Nicht unter `db/migrations/`: jener Ordner ist fuer die Postgres-Migrationen
+gedacht, die ueber eine ConfigMap ins Chart wandern. Fuer SQLite waere das ein
+Umweg ueber den Cluster.
 
 Die Warteschlange zieht mit `BEGIN IMMEDIATE` und
 `status='queued' ORDER BY created_at LIMIT 1`. `BEGIN IMMEDIATE` nimmt die
@@ -147,8 +155,90 @@ dieselbe Zeile lesen und beide denselben Job rendern.
 Container richtig und auf dem Host falsch: `.Values.userspace.appData` ist der
 Host-Pfad, `/app/data` der im Container.
 
+## Extraktion: aus einem Video ein Template
+
+```bash
+python3 -m move_worker extract --video trailer.mp4 --out template.json
+python3 -m move_worker extract --video trailer.mp4 --save          # in die DB
+python3 -m move_worker extract --video trailer.mp4 --snap-to-beat 60
+```
+
+### ffmpeg statt TransNetV2
+
+CLAUDE.md nennt fuer Schritt 8 TransNetV2. Der Scope v0 verlangt aber, dass
+die Pipeline **ohne einen einzigen KI-Aufruf** durchlaeuft -- und TransNetV2
+ist ein Modell. ffmpegs `scdet` ist deterministisch, liegt schon im Image und
+braucht keine Gewichte.
+
+Gemessen an einem Video mit vier bekannten harten Schnitten (320x180, 25 fps,
+Schnitte auf Bild 25, 63, 81, 126):
+
+| | |
+|---|---|
+| gefundene Schnitte | 1000, 2520, 3240, 5040 ms -- genau die vier |
+| Werte an den Schnitten | 25 bis 66 |
+| Werte an allen anderen Bildern | um 0,01 |
+| Rundlauf: Plan aus dem Template | 25, 38, 18, 45, 49 Bilder -- genau die Quelllaengen |
+| Render daraus | 175 Bilder, 7,000000 s |
+
+Der Abstand zwischen Schnitt und Nicht-Schnitt traegt eine robuste Schwelle;
+die Vorgabe ist 10.
+
+TransNetV2 bleibt der Ausbau, wenn die Qualitaet an echtem Material nicht
+reicht. Dann kehrt allerdings auch die GPU-Frage zurueck, die das
+CPU-only-Chart gerade gegenstandslos macht.
+
+### Was NICHT erkannt wird
+
+CLAUDE.md nennt als Bestandteile eines gelernten Templates auch
+Uebergangsarten und Bildgroessen. `scdet` liefert beides nicht:
+
+- **Uebergangsart**: erkannt werden Zeitpunkte, nicht ob dort hart
+  geschnitten oder geblendet wurde. Jeder Punkt wird als harter Schnitt
+  abgelegt. Eine Blende im Quellmaterial erzeugt einen flachen Anstieg statt
+  einer Spitze und wird je nach Schwelle gar nicht oder an einer beliebigen
+  Stelle darin gefunden.
+- **Bildgroesse**: braucht Bildinhalt-Verstaendnis. Steht auf `medium`.
+
+Beides steht als Vorgabe da und ist nicht geraten.
+
+### Beat-Grid
+
+librosa auf einer Tonspur, die ffmpeg vorher nach WAV holt -- so braucht
+librosa kein audioread und damit keinen zweiten Weg zu ffmpeg.
+
+Die BPM kommt aus dem **Mittel** der Beat-Abstaende, nicht aus librosas
+Tempo-Ausgabe. Gemessen an einem Klick-Track mit exakt 120 bpm:
+
+| Verfahren | Ergebnis |
+|---|---|
+| librosas `tempo` | 117,5 bpm |
+| Median der Abstaende | 117,6 bpm |
+| **Mittel der Abstaende** | **119,9 bpm** |
+
+Der Median war keinen Deut besser: die Abstaende wechseln zwischen 511 und
+487 ms, und der Median greift dann einen der beiden Werte statt der Mitte.
+Ausreisser fallen vorher heraus (was zwischen der Haelfte und dem
+Eineinhalbfachen des Medians liegt, bleibt) -- ein uebersehener Beat
+verdoppelt sonst einen Abstand und verzieht das Mittel.
+
+`--snap-to-beat MS` zieht jeden Schnitt auf den naechsten Beat, wenn er so
+nah liegt. Standard ist 0: aus gemessenen Daten werden sonst veraenderte,
+und das muss verlangt werden. Gemessen mit Toleranz 60 ms: 1000 -> 1022,
+2520 -> 2531, 3240 bleibt (naechster Beat 221 ms entfernt), 5040 -> 5016.
+
+### librosa ist optional
+
+`extraktion.py` importiert librosa absichtlich spaet. `work`, `render`,
+`demo` und der ganze Datenzugriff laufen ohne -- nur `extract` mit Tonspur
+braucht es und sagt sonst, was fehlt. Die Testsuite ueberspringt die drei
+Beat-Tests dann sauber.
+
+Im Image ist librosa enthalten (`worker/requirements.txt`). Es zieht numpy,
+scipy, numba und llvmlite mit; das Image waechst dadurch deutlich.
+
 ## Noch nicht da
 
-Shot-Boundary-Erkennung (TransNetV2), Beat-Erkennung (librosa), echte
-Clip-Generierung. Die Clips sind Platzhalter, sobald `source` auf
-`placeholder` steht.
+TransNetV2 als Ausbau der Schnitterkennung, Erkennung der Uebergangsarten und
+Bildgroessen, echte Clip-Generierung. Die Clips sind Platzhalter, sobald
+`source` auf `placeholder` steht.

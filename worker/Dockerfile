@@ -23,6 +23,7 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       ffmpeg \
       fonts-dejavu-core \
+      libsndfile1 \
  && rm -rf /var/lib/apt/lists/*
 
 ENV MOVE_FONT_FILE=/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf
@@ -39,6 +40,15 @@ RUN ffmpeg -hide_banner -filters | awk '$2=="drawtext"{gefunden=1} END{exit !gef
 RUN useradd --uid 1000 --user-group --create-home --shell /usr/sbin/nologin move
 
 WORKDIR /app
+
+# Nur die Beat-Erkennung braucht diese Pakete (librosa zieht numpy, scipy,
+# numba und llvmlite mit -- das Image waechst dadurch deutlich). Der Kern
+# des Workers laeuft mit der Standardbibliothek; extraktion.py importiert
+# librosa absichtlich spaet, damit `work` und `render` auch ohne gehen.
+COPY worker/requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt \
+ && python3 -c "import librosa, soundfile; print('librosa', librosa.__version__)"
+
 COPY worker/move_worker/ ./move_worker/
 COPY worker/examples/ ./examples/
 COPY db/schema.sql ./db/schema.sql

@@ -1,8 +1,12 @@
-# CI: Guards, Tests, beide Images.
+# CI: Guards, Tests, beide Images, und auf Verlangen die Veroeffentlichung.
 #
-# Baut die Images, veroeffentlicht sie aber NICHT. Ein Push nach ghcr ist ein
-# eigener, bewusster Schritt -- das Paket muss dafuer oeffentlich sein, sonst
-# endet die Installation auf der Box in registry_error.
+# Gebaut wird bei jedem Push. GEPUSHT wird nur bei einem Versions-Tag (v*)
+# oder bei einem Klick auf "Run workflow" mit gesetztem Haken -- und nur nach
+# einem gruenen Lauf. Eine App, die nie gruen war, gehoert in keine Registry.
+#
+# Die ghcr-Pakete sind beim ersten Push privat, auch in einem oeffentlichen
+# Repo. Ohne einmaliges Umstellen auf Public endet die Installation auf der
+# Box in registry_error.
 #
 # Beide Images werden mit dem Repo-Wurzelverzeichnis als Baukontext gebaut,
 # weil db/schema.sql von Web und Worker gemeinsam gelesen wird.
@@ -12,8 +16,14 @@ name: ci
 on:
   push:
     branches: ['**']
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
+    inputs:
+      push_images:
+        description: 'Images nach ghcr veroeffentlichen'
+        type: boolean
+        default: false
 
 jobs:
   guards:
@@ -48,8 +58,16 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: ffmpeg
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: ffmpeg und libsndfile
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg libsndfile1
+
+      - name: librosa
+        # Nur fuer die Beat-Tests. Ohne librosa ueberspringen sie sich, dann
+        # waere aber niemand da, der sie je laufen laesst.
+        working-directory: worker
+        run: pip install -r requirements.txt
 
       - name: Tests
         working-directory: worker
@@ -225,3 +243,57 @@ jobs:
       - name: Aufraeumen
         if: always()
         run: docker rm -f moveweb 2>/dev/null || true
+
+  publish:
+    name: Images nach ghcr
+    # Nur nach einem gruenen Lauf. Eine App, die nie gruen war, gehoert in
+    # keine Registry.
+    needs: [guards, worker-tests, web-typecheck, worker-image, web-image]
+    # Nicht bei jedem Push. Entweder ein Versions-Tag oder ein bewusster
+    # Klick auf "Run workflow" mit gesetztem Haken.
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') ||
+      github.event.inputs.push_images == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tag aus Chart.yaml lesen
+        id: version
+        run: |
+          # Der Image-Tag haengt an appVersion. Kein `latest` -- ein rollender
+          # Tag ist nicht reproduzierbar, und das Chart leitet den Tag aus
+          # .Chart.AppVersion ab.
+          tag="$(grep -E '^appVersion:' move/Chart.yaml | awk '{print $2}')"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "veroeffentliche Tag: $tag"
+
+      - name: Bei ghcr anmelden
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" \
+            | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Worker-Image
+        run: |
+          ref="ghcr.io/${{ github.repository_owner }}/moveworker:${{ steps.version.outputs.tag }}"
+          docker build -f worker/Dockerfile -t "$ref" .
+          docker push "$ref"
+          echo "$ref"
+
+      - name: Web-Image
+        run: |
+          ref="ghcr.io/${{ github.repository_owner }}/move:${{ steps.version.outputs.tag }}"
+          docker build -f web/Dockerfile -t "$ref" .
+          docker push "$ref"
+          echo "$ref"
+
+      - name: Hinweis zur Sichtbarkeit
+        run: |
+          echo "Die Pakete sind beim ersten Push privat, auch in einem"
+          echo "oeffentlichen Repo. Die Installation auf der Box endet dann in"
+          echo "registry_error. Einmalig umstellen unter:"
+          echo "  https://github.com/${{ github.repository_owner }}?tab=packages"
+          echo "  -> Paket -> Package settings -> Change visibility -> Public"

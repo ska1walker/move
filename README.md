@@ -50,8 +50,9 @@ Image-Tags aus `.Chart.AppVersion`, kein GPU-Bedarf in v0.
 |---|---|
 | `docs/olares-learnings.md` | das gemessene Olares-Dokument (Stand 15.09.2026). **Wichtigste fehlende Datei** — CLAUDE.md verweist bei jedem Widerspruch darauf. |
 | `docs/design-guide.md` | Kopie aus dem AImighty-Markt-Repo. Ohne sie kann Claude Code die verbindliche Designvorgabe nicht lesen. |
-| ghcr-Veröffentlichung | Die Images bauen in CI, werden aber nicht gepusht. Das Paket muss öffentlich sein, sonst `registry_error` bei der Installation. |
-| erreichbare `icon.png`-URL | Aus demselben Grund: das Repo ist privat, `raw.githubusercontent.com` liefert kein HTTP 200. |
+| Repo auf Public stellen | Entschieden, aber noch nicht getan. Danach liefert die `icon.png`-URL im Manifest HTTP 200. |
+| ghcr-Pakete auf Public stellen | Einmalig nach dem ersten Push. Pakete sind auch in einem öffentlichen Repo zunächst privat. |
+| `docs/design-guide.md` | s. o. — die Oberfläche folgt bisher der Zusammenfassung im Platzhalter, nicht dem Original. |
 
 Optional, falls vorhanden: `scripts/release.sh` und
 `scripts/regen-migrations.py` aus dem Insilo-Repo. `check-chart.sh` ruft den
@@ -93,8 +94,19 @@ Generator auf, überspringt den Guard aber sauber, solange er fehlt.
 
 5. Upload-Pfad: steht, gegen 400 MB gemessen. Siehe `web/README.md`.
 
-6. Offen: ghcr-Veröffentlichung, dann installieren und `running` auf der Box
-   **messen**.
+6. Extraktion: steht. `scdet` statt TransNetV2 (der v0-Scope verlangt „ohne
+   einen einzigen KI-Aufruf"), librosa für das Beat-Grid.
+
+   ```bash
+   cd worker && python3 -m move_worker extract --video trailer.mp4 --save
+   ```
+
+7. **Veröffentlichen.** Die CI pusht nach ghcr bei einem Versions-Tag `v*`
+   oder per „Run workflow" mit gesetztem Haken. Danach einmalig die beiden
+   Pakete auf Public stellen — sie sind beim ersten Push privat, auch in einem
+   öffentlichen Repo, und die Installation endet sonst in `registry_error`.
+
+8. Installieren und `running` auf der Box **messen**. Erst dann der Katalog.
 
 ## Reihenfolge, die nicht verhandelbar ist
 

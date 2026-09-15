@@ -8,16 +8,24 @@ andere ist zum Pruefen und Nachsehen von Hand:
     python3 -m move_worker enqueue  --template examples/beat-8s.json
     python3 -m move_worker work     --max-jobs 1
     python3 -m move_worker jobs
+    python3 -m move_worker extract  --video trailer.mp4 --save
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import sys
 from pathlib import Path
 
 from .assembler import AssemblyError, FramePlan, RenderSettings, assemble
+from .extraktion import (
+    DEFAULT_MIN_SHOT_MS,
+    DEFAULT_SCHWELLE,
+    ExtraktionsFehler,
+    template_aus_video,
+)
 from .ffmpeg import FfmpegError, FfmpegMissingError
 from .placeholders import PlaceholderError, create_for_template
 from .repository import Clip, Repository, RepositoryError
@@ -62,6 +70,32 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     sub.add_parser("jobs", help="Stand der Job-Tabelle anzeigen")
+
+    p_x = sub.add_parser("extract", help="CutTemplate aus einem Video gewinnen")
+    p_x.add_argument("--video", required=True)
+    p_x.add_argument("--out", help="Zieldatei fuer das JSON; ohne Angabe nach stdout")
+    p_x.add_argument("--name", default="")
+    p_x.add_argument("--id", dest="template_id", default="")
+    p_x.add_argument(
+        "--schwelle",
+        type=float,
+        default=DEFAULT_SCHWELLE,
+        help="ab welchem scdet-Wert ein Bild als Schnitt gilt",
+    )
+    p_x.add_argument("--min-shot-ms", type=int, default=DEFAULT_MIN_SHOT_MS)
+    p_x.add_argument(
+        "--snap-to-beat",
+        type=int,
+        default=0,
+        metavar="MS",
+        help="Schnitte auf den naechsten Beat ziehen, wenn er so nah liegt. "
+        "0 laesst die gemessenen Zeiten unangetastet.",
+    )
+    p_x.add_argument(
+        "--save",
+        action="store_true",
+        help="das Template in die Datenbank legen, damit das Web es anbietet",
+    )
 
     p_ph = sub.add_parser("placeholders", help="Platzhalter-Clips zu einem Template erzeugen")
     p_ph.add_argument("--template", required=True)
@@ -146,6 +180,30 @@ def _enqueue(args: argparse.Namespace) -> int:
     return 0
 
 
+def _extract(args: argparse.Namespace) -> int:
+    vorlage = template_aus_video(
+        args.video,
+        name=args.name,
+        schwelle=args.schwelle,
+        min_shot_ms=args.min_shot_ms,
+        snap_toleranz_ms=args.snap_to_beat,
+        template_id=args.template_id,
+    )
+
+    text = json.dumps(vorlage.to_json(), indent=2, ensure_ascii=False)
+    if args.out:
+        Path(args.out).write_text(text + "\n", encoding="utf-8")
+        print(args.out)
+    else:
+        print(text)
+
+    if args.save:
+        with Repository(db_path()) as repo:
+            repo.migrate()
+            print(repo.save_template(vorlage), file=sys.stderr)
+    return 0
+
+
 def _jobs() -> int:
     with Repository(db_path()) as repo:
         repo.migrate()
@@ -180,6 +238,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.befehl == "jobs":
             return _jobs()
 
+        if args.befehl == "extract":
+            return _extract(args)
+
         template = CutTemplate.from_file(args.template)
 
         if args.befehl == "show":
@@ -208,7 +269,13 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 0
 
-    except (TemplateError, AssemblyError, PlaceholderError, RepositoryError) as exc:
+    except (
+        TemplateError,
+        AssemblyError,
+        PlaceholderError,
+        RepositoryError,
+        ExtraktionsFehler,
+    ) as exc:
         print(f"Fehler: {exc}", file=sys.stderr)
         return 2
     except (FfmpegError, FfmpegMissingError) as exc:

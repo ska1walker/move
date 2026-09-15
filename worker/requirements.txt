@@ -1,0 +1,11 @@
+# Nur fuer die Beat-Erkennung.
+#
+# Der Kern des Workers -- Assembler, Platzhalter, Job-Schleife, Datenzugriff --
+# braucht NICHTS davon und laeuft mit der Standardbibliothek. librosa wird in
+# extraktion.py absichtlich spaet importiert, damit `work` und `render` auch
+# ohne diese Pakete funktionieren.
+#
+# librosa zieht numpy, scipy, numba und llvmlite mit. Das ist der Preis fuer
+# eine Beat-Erkennung, die nicht selbst geschrieben ist.
+librosa==0.11.0
+soundfile==0.13.1
