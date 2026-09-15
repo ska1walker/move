@@ -95,6 +95,18 @@ jobs:
             "moveworker:${{ steps.version.outputs.tag }}" \
             -m unittest discover -s tests -t .
 
+      - name: Schnittgrenzen im Image messen
+        # Laeuft auch wenn die Suite rot war -- gerade dann. Eine Datei kann
+        # die richtige Laufzeit haben und trotzdem an der falschen Stelle
+        # schneiden; dann sagt nur diese Messung, wo die Grenzen liegen.
+        if: always()
+        run: |
+          docker run --rm \
+            -v "$PWD/worker/tools:/app/tools:ro" \
+            --entrypoint python3 \
+            "moveworker:${{ steps.version.outputs.tag }}" \
+            tools/schnittgrenzen.py --template examples/beat-8s.json
+
       - name: Ein Job von Anfang bis Ende
         run: |
           img="moveworker:${{ steps.version.outputs.tag }}"
