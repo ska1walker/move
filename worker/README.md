@@ -4,6 +4,26 @@ Der Teil von move, der rechnet: `CutTemplate` + N Clips -> fertiges MP4.
 
 Kein Modell, keine Inferenz. Nur Standardbibliothek und ffmpeg.
 
+## Der Container
+
+```bash
+docker build -t moveworker:26.9.1 worker/
+docker run --rm -v /pfad/zu/appdata:/app/data moveworker:26.9.1 \
+  enqueue --template /app/examples/beat-8s.json
+docker run --rm -v /pfad/zu/appdata:/app/data moveworker:26.9.1
+```
+
+Der Standardbefehl ist `work`: die Polling-Schleife auf der Job-Tabelle. Der
+Worker spricht **nie HTTP**. Der Envoy-Sidecar faengt jeden eingehenden
+TCP-Verkehr ab, auch clusterinternen -- ein Aufruf vom eigenen Pod auf einen
+Entrance-Service endet in 401. Die Job-Tabelle ist deshalb der einzige Weg
+zwischen Web und Worker, und das Polling ist die Folge, nicht Bequemlichkeit.
+
+`SIGTERM` beendet die Schleife nach dem laufenden Job. hostPath erzwingt
+`strategy: Recreate`, bei einem Update wird der Pod also beendet und neu
+gestartet; beim Start holt `reset_stale_running` alles zurueck, was auf
+`running` haengengeblieben ist.
+
 ## Laufen lassen
 
 ```bash
@@ -11,6 +31,11 @@ cd worker
 
 # Was das Template bei einer Bildrate ergibt, ohne zu rendern
 python3 -m move_worker show --template examples/beat-8s.json --fps 25
+
+# Job einreihen, abarbeiten, nachsehen
+MOVE_DATA_DIR=/tmp/movedata python3 -m move_worker enqueue --template examples/beat-8s.json
+MOVE_DATA_DIR=/tmp/movedata python3 -m move_worker work --max-jobs 1
+MOVE_DATA_DIR=/tmp/movedata python3 -m move_worker jobs
 
 # Platzhalter erzeugen und in einem Lauf rendern
 python3 -m move_worker demo --template examples/beat-8s.json --out-dir /tmp/move
@@ -88,7 +113,27 @@ und faellt auf 0 zurueck, aeltere Templates bleiben lesbar.
 | `drawtext=timecode=...` scheitert mit "Both text and text file provided" | In ffmpeg 6.1.1 kaputt, auch ohne `text`. Stattdessen `text=%{pts\\:hms}`, das zeigt ohnehin Millisekunden |
 | Filtergraph verschluckt einen Doppelpunkt | Zwei Entpack-Durchgaenge: `:` braucht **zwei** Backslashes, `,` nur einen |
 
+## Datenhaltung
+
+SQLite auf `/app/data/db/move.sqlite3`, WAL-Modus. Alles SQL steht in
+`repository.py` und nirgends sonst -- der Wechsel auf die Olares-Postgres in
+v1 soll genau eine Datei betreffen.
+
+Das Schema steht dort als Konstante und nicht unter `db/migrations/`: jener
+Ordner ist fuer die Postgres-Migrationen gedacht, die ueber eine ConfigMap
+ins Chart wandern. Fuer SQLite waere das ein Umweg ueber den Cluster.
+
+Die Warteschlange zieht mit `BEGIN IMMEDIATE` und
+`status='queued' ORDER BY created_at LIMIT 1`. `BEGIN IMMEDIATE` nimmt die
+Schreibsperre sofort statt erst beim `UPDATE` -- sonst koennten zwei Worker
+dieselbe Zeile lesen und beide denselben Job rendern.
+
+`output_uri` ist **relativ zum Datenverzeichnis**. Absolut waere der Pfad im
+Container richtig und auf dem Host falsch: `.Values.userspace.appData` ist der
+Host-Pfad, `/app/data` der im Container.
+
 ## Noch nicht da
 
-Job-Tabelle, Polling-Schleife, SQLite-Repository, Shot-Boundary-Erkennung,
-Beat-Erkennung. v0 faehrt bis hierher ueber die Kommandozeile.
+Shot-Boundary-Erkennung (TransNetV2), Beat-Erkennung (librosa), echte
+Clip-Generierung. Die Clips sind Platzhalter, sobald `source` auf
+`placeholder` steht.

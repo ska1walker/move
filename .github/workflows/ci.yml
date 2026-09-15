@@ -1,0 +1,105 @@
+# CI: Guards, Worker-Tests, Worker-Image.
+#
+# Baut das Image, veroeffentlicht es aber NICHT. Ein Push nach ghcr ist ein
+# eigener, bewusster Schritt -- das Paket muss dafuer oeffentlich sein, sonst
+# endet die Installation auf der Box in registry_error.
+
+name: ci
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  guards:
+    name: check-chart.sh
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Der Guard vergleicht neue Werteschluessel gegen den letzten Tag.
+          # Ohne Historie ueberspringt er die Pruefung.
+          fetch-depth: 0
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.3
+
+      - name: check-chart.sh
+        run: ./scripts/check-chart.sh
+
+      - name: icon.png ist reproduzierbar
+        run: |
+          python3 scripts/make-icon.py
+          git diff --exit-code -- icon.png
+
+  worker-tests:
+    name: Worker-Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+
+      - name: Tests
+        working-directory: worker
+        run: python3 -m unittest discover -s tests -t . --verbose
+
+  worker-image:
+    name: Worker-Image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tag aus Chart.yaml lesen
+        id: version
+        run: |
+          # Der Image-Tag haengt an appVersion, nicht an values.yaml.
+          tag="$(grep -E '^appVersion:' move/Chart.yaml | awk '{print $2}')"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Tag: $tag"
+
+      - name: Bauen
+        working-directory: worker
+        run: docker build -t "moveworker:${{ steps.version.outputs.tag }}" .
+
+      - name: drawtext und Schrift sind im Image
+        run: |
+          img="moveworker:${{ steps.version.outputs.tag }}"
+          docker run --rm --entrypoint ffmpeg "$img" -hide_banner -filters \
+            | awk '$2=="drawtext"{gefunden=1} END{exit !gefunden}'
+          docker run --rm --entrypoint sh "$img" -c 'test -f "$MOVE_FONT_FILE"'
+
+      - name: Nicht als root
+        run: |
+          uid="$(docker run --rm --entrypoint id "moveworker:${{ steps.version.outputs.tag }}" -u)"
+          test "$uid" = "1000" || { echo "laeuft als UID $uid, erwartet 1000"; exit 1; }
+
+      - name: Testsuite im gebauten Image
+        run: |
+          # tests/ liegt bewusst nicht im Image. Fuer den Lauf wird es
+          # eingehaengt, damit genau das geprueft wird, was ausgeliefert wird.
+          docker run --rm \
+            -v "$PWD/worker/tests:/app/tests:ro" \
+            --entrypoint python3 \
+            "moveworker:${{ steps.version.outputs.tag }}" \
+            -m unittest discover -s tests -t .
+
+      - name: Ein Job von Anfang bis Ende
+        run: |
+          img="moveworker:${{ steps.version.outputs.tag }}"
+          mkdir -p /tmp/movedata && chmod 777 /tmp/movedata
+          docker run --rm -v /tmp/movedata:/app/data "$img" \
+            enqueue --template /app/examples/beat-8s.json
+          docker run --rm -v /tmp/movedata:/app/data "$img" \
+            work --max-jobs 1 --width 320 --height 180
+          docker run --rm -v /tmp/movedata:/app/data "$img" jobs | tee /tmp/jobs.txt
+          grep -q 'done *1' /tmp/jobs.txt || { echo "kein fertiger Job"; exit 1; }
+          ls -la /tmp/movedata/renders/

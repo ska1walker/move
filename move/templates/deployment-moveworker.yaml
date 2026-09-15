@@ -33,7 +33,10 @@ spec:
           command:
             - sh
             - -c
-            - mkdir -p /app/data/work /app/data/renders && chown -R 1000:1000 /app/data/work /app/data/renders
+            # db gehoert beiden: die Job-Tabelle ist der einzige Weg zwischen
+            # Web und Worker. Wer zuerst startet, legt den Ordner an -- die
+            # Reihenfolge der Pods ist nicht garantiert.
+            - mkdir -p /app/data/db /app/data/work /app/data/renders && chown -R 1000:1000 /app/data/db /app/data/work /app/data/renders
           volumeMounts:
             - name: appdata
               mountPath: /app/data

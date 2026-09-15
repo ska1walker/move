@@ -1,12 +1,13 @@
-"""Kommandozeile fuer den Assembler.
+"""Kommandozeile des Workers.
 
-Solange es die Job-Tabelle noch nicht gibt, ist das der Weg, die Pipeline zu
-fahren und zu pruefen:
+Im Container laeuft `work` -- die Polling-Schleife auf der Job-Tabelle. Alles
+andere ist zum Pruefen und Nachsehen von Hand:
 
-    python -m move_worker demo --template examples/beat-8s.json --out-dir /tmp/move
-
-`demo` erzeugt die Platzhalter und rendert sie in einem Lauf -- die Schritte 5
-und 6 aus dem Scope, ohne einen einzigen KI-Aufruf.
+    python3 -m move_worker show     --template examples/beat-8s.json
+    python3 -m move_worker demo     --template examples/beat-8s.json --out-dir /tmp/move
+    python3 -m move_worker enqueue  --template examples/beat-8s.json
+    python3 -m move_worker work     --max-jobs 1
+    python3 -m move_worker jobs
 """
 
 from __future__ import annotations
@@ -19,6 +20,8 @@ from pathlib import Path
 from .assembler import AssemblyError, FramePlan, RenderSettings, assemble
 from .ffmpeg import FfmpegError, FfmpegMissingError
 from .placeholders import PlaceholderError, create_for_template
+from .repository import Clip, Repository, RepositoryError
+from .runner import build_worker, db_path
 from .templates import CutTemplate, TemplateError
 
 
@@ -38,6 +41,27 @@ def build_parser() -> argparse.ArgumentParser:
         "-v", "--verbose", action="store_true", help="ffmpeg-Aufrufe mitloggen"
     )
     sub = parser.add_subparsers(dest="befehl", required=True)
+
+    p_w = sub.add_parser("work", help="Job-Tabelle pollen und rendern (Container-Befehl)")
+    p_w.add_argument(
+        "--max-jobs",
+        type=int,
+        default=None,
+        help="nach so vielen Jobs beenden; ohne Angabe endlos",
+    )
+    _add_format_args(p_w)
+
+    p_e = sub.add_parser("enqueue", help="Template ablegen und einen Job einreihen")
+    p_e.add_argument("--template", required=True)
+    p_e.add_argument(
+        "--clip",
+        action="append",
+        default=[],
+        help="Datei fuer eine Einstellung, in der Reihenfolge des Templates. "
+        "Ohne Angabe werden Platzhalter erzeugt.",
+    )
+
+    sub.add_parser("jobs", help="Stand der Job-Tabelle anzeigen")
 
     p_ph = sub.add_parser("placeholders", help="Platzhalter-Clips zu einem Template erzeugen")
     p_ph.add_argument("--template", required=True)
@@ -99,6 +123,43 @@ def _show(template: CutTemplate, fps: int) -> None:
     )
 
 
+def _enqueue(args: argparse.Namespace) -> int:
+    template = CutTemplate.from_file(args.template)
+    if args.clip and len(args.clip) != len(template.cuts):
+        print(
+            f"Fehler: Das Template hat {len(template.cuts)} Einstellungen, "
+            f"uebergeben wurden {len(args.clip)} Clips",
+            file=sys.stderr,
+        )
+        return 2
+
+    if args.clip:
+        clips = [Clip(index=i, source="upload", uri=p) for i, p in enumerate(args.clip)]
+    else:
+        clips = [Clip(index=i, source="placeholder") for i in range(len(template.cuts))]
+
+    with Repository(db_path()) as repo:
+        repo.migrate()
+        template_id = repo.save_template(template)
+        job_id = repo.enqueue(template_id, clips)
+    print(job_id)
+    return 0
+
+
+def _jobs() -> int:
+    with Repository(db_path()) as repo:
+        repo.migrate()
+        stand = repo.count_by_status()
+        print(f"Datenbank: {repo.db_path}")
+        if not stand:
+            print("  keine Jobs")
+            return 0
+        for status in ("queued", "running", "done", "failed"):
+            if status in stand:
+                print(f"  {status:8s} {stand[status]}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     logging.basicConfig(
@@ -107,6 +168,18 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     try:
+        if args.befehl == "work":
+            worker = build_worker(settings=_settings(args))
+            worker.install_signal_handlers()
+            worker.run_forever(max_jobs=args.max_jobs)
+            return 0
+
+        if args.befehl == "enqueue":
+            return _enqueue(args)
+
+        if args.befehl == "jobs":
+            return _jobs()
+
         template = CutTemplate.from_file(args.template)
 
         if args.befehl == "show":
@@ -114,27 +187,28 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
         if args.befehl == "placeholders":
-            pfade = create_for_template(template, args.out_dir, _settings(args))
-            for p in pfade:
+            for p in create_for_template(template, args.out_dir, _settings(args)):
                 print(p)
             return 0
 
         if args.befehl == "render":
-            ziel = assemble(template, args.clip, args.out, _settings(args))
-            print(ziel)
+            print(assemble(template, args.clip, args.out, _settings(args)))
             return 0
 
         if args.befehl == "demo":
             out_dir = Path(args.out_dir)
             clips = create_for_template(template, out_dir / "clips", _settings(args))
-            ziel = assemble(
-                template, list(clips), out_dir / f"{template.id or 'render'}.mp4",
-                _settings(args),
+            print(
+                assemble(
+                    template,
+                    list(clips),
+                    out_dir / f"{template.id or 'render'}.mp4",
+                    _settings(args),
+                )
             )
-            print(ziel)
             return 0
 
-    except (TemplateError, AssemblyError, PlaceholderError) as exc:
+    except (TemplateError, AssemblyError, PlaceholderError, RepositoryError) as exc:
         print(f"Fehler: {exc}", file=sys.stderr)
         return 2
     except (FfmpegError, FfmpegMissingError) as exc:
