@@ -10,6 +10,7 @@ dieser Einschraenkung, nicht Bequemlichkeit.
 from __future__ import annotations
 
 import logging
+import math
 import os
 import signal
 import time
@@ -18,8 +19,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .assembler import FramePlan, RenderSettings, assemble
+from .generierung import Anfrage, Generator, default_model
 from .placeholders import create as create_placeholder
-from .repository import Repository, RenderJob
+from .repository import Clip, RenderJob, Repository
 from .templates import CutTemplate
 
 LOG = logging.getLogger(__name__)
@@ -157,6 +159,10 @@ class Worker:
                 pfade.append(ziel)
                 continue
 
+            if clip.source == "fal":
+                pfade.append(self.erzeuge_clip(clip, template, plan, i, basis))
+                continue
+
             quelle = Path(clip.uri)
             if not quelle.is_absolute():
                 quelle = basis / clip.uri
@@ -167,6 +173,46 @@ class Worker:
             pfade.append(quelle)
 
         return pfade
+
+    def erzeuge_clip(
+        self,
+        clip: Clip,
+        template: CutTemplate,
+        plan: FramePlan,
+        index: int,
+        basis: Path,
+    ) -> Path:
+        """Laesst eine Einstellung bei fal.ai erzeugen.
+
+        Ausserhalb des v0-Scope, auf ausdrueckliche Ansage gebaut. Der Schnitt
+        bleibt Arithmetik; generiert wird nur der Inhalt der Einstellung.
+        """
+        if not clip.prompt.strip():
+            raise ValueError(
+                f"clips[{index}] hat source 'fal', aber keinen prompt. "
+                f"Ohne Beschreibung kann nichts erzeugt werden."
+            )
+
+        # Die Bildgroesse aus dem Template gehoert in die Beschreibung -- sie
+        # ist Teil dessen, was ein Template ueber den Schnitt aussagt. Die
+        # Zusammensetzung steht im Log, damit sichtbar ist, was gefragt wurde.
+        bildgroesse = template.cuts[index].shot_scale.strip()
+        prompt = f"{clip.prompt.strip()}, {bildgroesse} shot" if bildgroesse else clip.prompt.strip()
+
+        # Aufgerundet auf ganze Sekunden: Modelle nehmen meist ganzzahlige
+        # Laengen, und zu kurz waere teuer -- der Assembler lehnt den Clip
+        # dann ab und die Generierung waere bezahlt und unbrauchbar.
+        sekunden = math.ceil(plan.source[index] / plan.fps)
+
+        anfrage = Anfrage(
+            prompt=prompt,
+            sekunden=float(sekunden),
+            breite=self.settings.width,
+            height=self.settings.height,
+            model=clip.model.strip() or default_model(),
+        )
+        generator = Generator(cache_dir=basis / "generated")
+        return generator.erzeuge(anfrage)
 
 
 def build_worker(

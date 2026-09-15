@@ -53,6 +53,8 @@ Image-Tags aus `.Chart.AppVersion`, kein GPU-Bedarf in v0.
 | Repo auf Public stellen | Entschieden, aber noch nicht getan. Danach liefert die `icon.png`-URL im Manifest HTTP 200. |
 | ghcr-Pakete auf Public stellen | Einmalig nach dem ersten Push. Pakete sind auch in einem öffentlichen Repo zunächst privat. |
 | `docs/design-guide.md` | s. o. — die Oberfläche folgt bisher der Zusammenfassung im Platzhalter, nicht dem Original. |
+| `envs:`-Block im Manifest | Damit Olares den `FAL_KEY` bei der Installation abfragt. AGENTS.md und CLAUDE.md widersprechen sich hier, `check-chart.sh` setzt CLAUDE.md durch — gegen ein Live-Chart zu klären. |
+| erster echter fal-Aufruf | Die Generierung ist gebaut und getestet, aber nur gegen ein Doppel. fal.ai ist vom Proxy gesperrt. |
 
 Optional, falls vorhanden: `scripts/release.sh` und
 `scripts/regen-migrations.py` aus dem Insilo-Repo. `check-chart.sh` ruft den

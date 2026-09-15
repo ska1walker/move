@@ -65,12 +65,30 @@ export async function POST(request: Request) {
     let clips: Clip[];
     if (Array.isArray(wunsch.clips) && wunsch.clips.length > 0) {
       clips = (wunsch.clips as unknown[]).map((roh, i) => {
-        const c = roh as { index?: unknown; source?: unknown; uri?: unknown };
+        const c = roh as {
+          index?: unknown;
+          source?: unknown;
+          uri?: unknown;
+          prompt?: unknown;
+          model?: unknown;
+        };
         const index = typeof c.index === 'number' ? c.index : i;
         const source = typeof c.source === 'string' ? c.source : 'placeholder';
         const uri = typeof c.uri === 'string' ? c.uri : '';
-        if (source !== 'placeholder') pruefeUri(index, uri);
-        return { index, source, uri };
+        const prompt = typeof c.prompt === 'string' ? c.prompt.trim() : '';
+        const model = typeof c.model === 'string' ? c.model.trim() : '';
+
+        if (source === 'fal') {
+          // Ohne Beschreibung kann nichts erzeugt werden -- und das soll hier
+          // auffallen, nicht erst nachdem ein Aufruf bezahlt ist.
+          if (prompt === '') {
+            throw new Error(`clips[${index}]: source 'fal' braucht einen prompt`);
+          }
+        } else if (source !== 'placeholder') {
+          pruefeUri(index, uri);
+        }
+
+        return { index, source, uri, prompt, model };
       });
 
       const indizes = new Set(clips.map((c) => c.index));

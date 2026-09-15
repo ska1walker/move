@@ -25,3 +25,14 @@ images:
     tag: ""
   worker:
     tag: ""
+
+# Nutzereingaben, die Olares zur INSTALLATIONSZEIT setzt (Schluessel usw.).
+#
+# Hier steht ausschliesslich ein leerer Default. values.yaml ist oeffentlich --
+# ein Schluessel darf hier niemals stehen. Ohne den Default laeuft
+# `helm template` in einen nil-Pointer, sobald ein Template darauf zugreift.
+#
+# Gelesen wird immer in der Klammerform `(.Values.olaresEnv).X`: auf einer
+# Bestandsinstallation fehlt der Block, weil ein Markt-Upgrade die Werte der
+# Erstinstallation zurueckspielt.
+olaresEnv: {}

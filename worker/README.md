@@ -237,8 +237,90 @@ Beat-Tests dann sauber.
 Im Image ist librosa enthalten (`worker/requirements.txt`). Es zieht numpy,
 scipy, numba und llvmlite mit; das Image waechst dadurch deutlich.
 
+## Clip-Generierung bei fal.ai
+
+**Ausserhalb des v0-Scope.** CLAUDE.md schliesst Video-Generierung aus; das
+hier ist eine bewusste Erweiterung darueber hinaus. Der Assembler bleibt
+unberuehrt -- der Schnitt ist weiterhin Arithmetik, generiert wird nur der
+Inhalt der einzelnen Einstellungen.
+
+Ein Clip mit `source: "fal"` und einem `prompt` wird erzeugt:
+
+```json
+{ "index": 0, "source": "fal", "prompt": "a wide desert at dawn", "model": "" }
+```
+
+`model` leer heisst: der Wert aus `MOVE_FAL_MODEL`, sonst der Standard in
+`generierung.py`.
+
+### Der Schluessel
+
+`FAL_KEY` aus der Umgebung, so wie fal-client es selbst erwartet. Im Chart
+kommt er ueber `(.Values.olaresEnv).FAL_KEY` dorthin und steht **an keiner
+Stelle im Repo** -- `values.yaml` traegt nur `olaresEnv: {}`.
+
+Er wird auch nirgends geloggt: `_ohne_geheimnis` raeumt ihn aus jeder Meldung,
+bevor sie in `render_job.error` und damit in die Oberflaeche wandert. Ein
+Schluessel, der einmal dort steht, steht dort dauerhaft. Ein Test prueft das.
+
+### Drei Entscheidungen
+
+**Gepollt, nicht zurueckgerufen.** fal kann das Ergebnis per Webhook
+schicken. Fuer move nicht nutzbar: der Envoy-Sidecar faengt jeden eingehenden
+TCP-Verkehr ab, ein Rueckruf von aussen endet in 401 `ext_authz_denied`.
+`subscribe` pollt selbst. Dieselbe Einschraenkung, die schon das Polling auf
+der Job-Tabelle erzwingt.
+
+**Zwischengespeichert, sonst kostet ein Pod-Neustart doppelt.** hostPath
+erzwingt `strategy: Recreate`; bei einem Update wird der Pod beendet, und
+`reset_stale_running` legt den laufenden Job zurueck in die Warteschlange.
+Ohne Zwischenspeicher wuerde derselbe Job danach alle Einstellungen neu
+erzeugen -- und neu abgerechnet. Der Schluessel ist ein Hash ueber Modell,
+Prompt, Laenge und Format; liegt die Datei unter `data/generated/<hash>.mp4`,
+wird sie genommen. Ein Test prueft, dass ein zweiter Lauf fal NICHT erneut
+ruft.
+
+**Das Modell ist nicht fest verdrahtet.** Welche Video-Modelle es bei fal gibt
+und wie ihre Ausgabe aussieht, konnte ich nicht nachsehen: fal.ai und
+docs.fal.ai sind vom Egress-Proxy gesperrt. Die Antwort wird deshalb tolerant
+nach einer URL durchsucht (`video`, `output`, `file`, `result`, `url`, auch
+verschachtelt und in Listen). Findet sich keine, scheitert der Job **mit der
+Antwort im Text** statt zu raten.
+
+### Nur http und https
+
+Die Antwort kommt von aussen. Ohne Schema-Pruefung wuerde eine URL wie
+`file:///etc/passwd` dazu fuehren, dass der Worker eine lokale Datei liest und
+als erzeugten Clip ablegt. Jeder Kandidat laeuft durch `ist_web_url`. Diese
+Luecke hat ein Test gefunden, nicht der Autor.
+
+### Was in die Anfrage geht
+
+Der Prompt wird zusammengesetzt: `"<prompt>, <shot_scale> shot"`. Die
+Bildgroesse steht im Template und ist Teil dessen, was es ueber den Schnitt
+aussagt. Die Zusammensetzung steht im Log, damit sichtbar ist, was gefragt
+wurde.
+
+Die Laenge wird auf ganze Sekunden **aufgerundet**: Modelle nehmen meist
+ganzzahlige Laengen, und ein zu kurzer Clip ist teuer -- der Assembler lehnt
+ihn dann ab (`check_clips`, mit Zahlen), und die Generierung waere bezahlt und
+unbrauchbar.
+
+### Was hier nicht geprueft ist
+
+Der Netzaufruf selbst. fal ist gesperrt und ein Schluessel liegt hier nicht.
+Getestet ist alles andere -- Anfrage, Zwischenspeicher, Auslesen der Antwort,
+Download, Fehlerwege -- gegen ein Doppel, das seine Aufrufe aufzeichnet.
+**Der erste echte Aufruf gegen fal ist noch nicht gelaufen.**
+
 ## Noch nicht da
 
+Der `envs:`-Block im Manifest, der Olares dazu bringt, den Schluessel bei der
+Installation abzufragen. Ohne ihn bleibt `olaresEnv` leer und `FAL_KEY` muss
+von Hand ins Deployment. Der Grund steht in der Antwort auf die Frage, wo der
+Schluessel hingehoert: AGENTS.md und CLAUDE.md widersprechen sich an dieser
+Stelle, und `check-chart.sh` setzt CLAUDE.md durch. Zu klaeren gegen ein
+Live-Chart.
+
 TransNetV2 als Ausbau der Schnitterkennung, Erkennung der Uebergangsarten und
-Bildgroessen, echte Clip-Generierung. Die Clips sind Platzhalter, sobald
-`source` auf `placeholder` steht.
+Bildgroessen.

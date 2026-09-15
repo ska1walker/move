@@ -87,16 +87,34 @@ def new_id() -> str:
 class Clip:
     """Ein Clip fuer eine Einstellung.
 
-    `source` sagt, woher er kommt: `placeholder` laesst den Worker ihn selbst
-    erzeugen, alles andere verweist ueber `uri` auf eine Datei.
+    `source` sagt, woher er kommt:
+
+        placeholder  der Worker erzeugt eine Flaeche mit Index und Timecode
+        fal          der Worker laesst ihn bei fal.ai erzeugen, aus `prompt`
+        alles andere `uri` verweist auf eine Datei im Datenverzeichnis
+
+    `prompt` und `model` stehen so nicht im Datenmodell in CLAUDE.md -- dort
+    ist Video-Generierung fuer v0 ausgeschlossen. Ohne Beschreibung kann eine
+    Generierung aber nicht wissen, was sie erzeugen soll. Beide Felder sind
+    optional und fallen auf "" zurueck; aeltere Jobs bleiben lesbar.
+
+    `model` leer heisst: das aus MOVE_FAL_MODEL.
     """
 
     index: int
     source: str = "placeholder"
     uri: str = ""
+    prompt: str = ""
+    model: str = ""
 
     def to_json(self) -> dict[str, Any]:
-        return {"index": self.index, "source": self.source, "uri": self.uri}
+        return {
+            "index": self.index,
+            "source": self.source,
+            "uri": self.uri,
+            "prompt": self.prompt,
+            "model": self.model,
+        }
 
     @classmethod
     def from_json(cls, roh: dict[str, Any]) -> "Clip":
@@ -104,6 +122,8 @@ class Clip:
             index=int(roh["index"]),
             source=str(roh.get("source", "placeholder")),
             uri=str(roh.get("uri", "")),
+            prompt=str(roh.get("prompt", "")),
+            model=str(roh.get("model", "")),
         )
 
 

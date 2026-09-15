@@ -64,6 +64,16 @@ spec:
               value: "1"
             - name: MOVE_POLL_INTERVAL_MS
               value: "2000"
+            # Schluessel fuer die Clip-Generierung. Kommt aus der
+            # Nutzereingabe bei der Installation und steht an keiner Stelle
+            # im Repo. Leer heisst: keine Generierung -- ein Job mit
+            # source 'fal' scheitert dann mit Klartext, statt still nichts
+            # zu tun.
+            - name: FAL_KEY
+              value: {{ (.Values.olaresEnv).FAL_KEY | default "" | quote }}
+            # Leer heisst: der Standard aus generierung.py.
+            - name: MOVE_FAL_MODEL
+              value: {{ (.Values.olaresEnv).MOVE_FAL_MODEL | default "" | quote }}
           volumeMounts:
             - name: appdata
               mountPath: /app/data

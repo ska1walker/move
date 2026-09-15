@@ -13,6 +13,8 @@ from pathlib import Path
 from unittest import mock
 
 from move_worker.assembler import RenderSettings
+from tests.test_pipeline import einfarbig
+
 from move_worker.repository import STATUS_DONE, STATUS_FAILED, Clip, Repository
 from move_worker.runner import Worker
 from move_worker.templates import CutTemplate
@@ -120,9 +122,75 @@ class TestWorker(unittest.TestCase):
         self.repo.enqueue(self.template_id, [Clip(index=0), Clip(index=1)])
         self.assertEqual(self.worker.run_forever(), 0)
 
-    def test_hochgeladener_clip_wird_genutzt(self):
-        from tests.test_pipeline import einfarbig  # noqa: PLC0415 - nur hier gebraucht
+    def test_fal_ohne_prompt_scheitert_mit_klartext(self):
+        """Ohne Beschreibung kann nichts erzeugt werden -- und das soll
+        auffallen, bevor ein Aufruf bezahlt wird."""
+        job_id = self.repo.enqueue(
+            self.template_id,
+            [Clip(index=0, source="fal"), Clip(index=1)],
+        )
+        self.assertTrue(self.worker.run_once())
+        job = self.repo.get_job(job_id)
+        self.assertEqual(job.status, STATUS_FAILED)
+        self.assertIn("prompt", job.error)
 
+    def test_fal_clip_wird_erzeugt_und_verbaut(self):
+        """Mit einem Doppel fuer fal -- der Netzaufruf ist hier nicht moeglich.
+
+        Geprueft wird, was der Worker fragt: Modell, zusammengesetzter Prompt
+        (mit der Bildgroesse aus dem Template) und aufgerundete Laenge.
+        """
+        from move_worker.assembler import FramePlan
+
+        plan = FramePlan.build(self.template, 25)
+        gefragt = {}
+
+        class GeneratorDoppel:
+            def __init__(self, cache_dir, **_):
+                self.cache_dir = Path(cache_dir)
+
+            def erzeuge(self, anfrage):
+                gefragt.update(
+                    model=anfrage.model,
+                    prompt=anfrage.prompt,
+                    sekunden=anfrage.sekunden,
+                )
+                ziel = self.cache_dir / f"{anfrage.schluessel()}.mp4"
+                # Wie der echte Generator: Verzeichnis anlegen.
+                ziel.parent.mkdir(parents=True, exist_ok=True)
+                # Lang genug, damit der Assembler ihn annimmt.
+                einfarbig(ziel, "red", plan.source[0] + 5)
+                return ziel
+
+        job_id = self.repo.enqueue(
+            self.template_id,
+            [
+                Clip(index=0, source="fal", prompt="a wide desert at dawn", model="fal-ai/x"),
+                Clip(index=1),
+            ],
+        )
+        with mock.patch("move_worker.runner.Generator", GeneratorDoppel):
+            self.assertTrue(self.worker.run_once())
+
+        job = self.repo.get_job(job_id)
+        self.assertEqual(job.status, STATUS_DONE, job.error)
+        self.assertEqual(gefragt["model"], "fal-ai/x")
+        # Die Bildgroesse des Templates steht mit in der Beschreibung.
+        self.assertIn("a wide desert at dawn", gefragt["prompt"])
+        self.assertIn("medium shot", gefragt["prompt"])
+        # 25 Bilder bei 25 fps -> 1 Sekunde, aufgerundet.
+        self.assertEqual(gefragt["sekunden"], float(-(-plan.source[0] // 25)))
+
+    def test_prompt_ueberlebt_den_umlauf_durch_die_datenbank(self):
+        job_id = self.repo.enqueue(
+            self.template_id,
+            [Clip(index=0, source="fal", prompt="ein Satz", model="fal-ai/y"), Clip(index=1)],
+        )
+        job = self.repo.get_job(job_id)
+        self.assertEqual(job.clips[0].prompt, "ein Satz")
+        self.assertEqual(job.clips[0].model, "fal-ai/y")
+
+    def test_hochgeladener_clip_wird_genutzt(self):
         from move_worker.assembler import FramePlan
 
         plan = FramePlan.build(self.template, 25)

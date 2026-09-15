@@ -19,7 +19,15 @@ import { DatabaseSync } from 'node:sqlite';
 
 export type Status = 'queued' | 'running' | 'done' | 'failed';
 
-export type Clip = { index: number; source: string; uri: string };
+export type Clip = {
+  index: number;
+  source: string;
+  uri: string;
+  /** Nur bei source 'fal': was erzeugt werden soll. */
+  prompt?: string;
+  /** Nur bei source 'fal'; leer heisst der Standard des Workers. */
+  model?: string;
+};
 
 export type Cut = {
   at_ms: number;

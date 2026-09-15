@@ -9,3 +9,7 @@
 # eine Beat-Erkennung, die nicht selbst geschrieben ist.
 librosa==0.11.0
 soundfile==0.13.1
+
+# Clip-Generierung bei fal.ai. Ausserhalb des v0-Scope, auf Ansage gebaut.
+# generierung.py importiert es spaet -- der Kern des Workers laeuft ohne.
+fal-client==1.0.1
