@@ -135,6 +135,7 @@ class TestFilterGraph(unittest.TestCase):
     def test_jede_einstellung_wird_auf_bilder_geschnitten(self):
         for i, bilder in enumerate(self.plan.source):
             self.assertIn(f"[{i}:v]fps=25,trim=end_frame={bilder},", self.graph)
+            self.assertIn(f"settb=1/25,setpts=N[s{i}]", self.graph)
 
     def test_blenden_versatz_und_laenge(self):
         # Einstellung 1: Blende 10 Bilder ab Bild 50.
@@ -152,17 +153,18 @@ class TestFilterGraph(unittest.TestCase):
     def test_jeder_schritt_wird_auf_seine_laenge_festgeschrieben(self):
         """Der Plan ist die Wahrheit, nicht die Buchhaltung des Filters.
 
-        ffmpeg 5.1 liefert aus derselben xfade-Kette ein Bild mehr als 6.1.1.
-        Ohne dieses trim lag jeder folgende Schnitt ein Bild zu spaet -- bei
-        gleicher Gesamtlaenge, weil -frames:v am Ende abschneidet.
+        trim schreibt die Laenge jedes Zwischenstroms fest, setpts=N seine
+        Zeitstempel. Beides zusammen macht den Schnitt unabhaengig davon, was
+        der vorherige Filter hinterlassen hat -- siehe den Kommentar in
+        assembler.build_filter_graph zur gemessenen Abweichung auf ffmpeg 5.1.
         """
         for i in range(1, len(self.plan.start)):
             laenge = self.plan.start[i] + self.plan.source[i]
-            self.assertIn(f"trim=end_frame={laenge},settb=1/25[x{i}]", self.graph)
+            self.assertIn(f"trim=end_frame={laenge},settb=1/25,setpts=N[x{i}]", self.graph)
 
     def test_letzter_schritt_endet_auf_der_gesamtlaenge(self):
         letzter = len(self.plan.start) - 1
-        self.assertIn(f"trim=end_frame={self.plan.total},settb=1/25[x{letzter}]", self.graph)
+        self.assertIn(f"trim=end_frame={self.plan.total},settb=1/25,setpts=N[x{letzter}]", self.graph)
 
 
 class TestBuildArgs(unittest.TestCase):

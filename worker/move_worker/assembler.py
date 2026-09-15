@@ -197,7 +197,8 @@ def build_filter_graph(plan: FramePlan, template: CutTemplate, settings: RenderS
             f":x=(ow-iw)/2:y=(oh-ih)/2:color={settings.background},"
             f"setsar=1,"
             f"format=yuv420p,"
-            f"settb=1/{settings.fps}"
+            f"settb=1/{settings.fps},"
+            f"setpts=N"
             f"[s{i}]"
         )
 
@@ -218,6 +219,19 @@ def build_filter_graph(plan: FramePlan, template: CutTemplate, settings: RenderS
     #
     #    `settb` ist noetig, weil `concat` die Zeitbasis auf 1/1000000 setzt
     #    und xfade danach mit "timebase do not match" abbricht.
+    #
+    #    `setpts=N` schreibt danach die Zeitstempel neu: Bild n bekommt PTS n
+    #    im Raster 1/fps. Ohne das haengt `concat` davon ab, welche PTS der
+    #    vorherige Filter hinterlassen hat -- es rechnet den Versatz des
+    #    zweiten Stroms aus der Dauer des ersten. Gemessen im Worker-Image
+    #    (ffmpeg 5.1): nach xfade lagen die PTS auf einem Mikrosekunden-
+    #    Raster, das beim Umrechnen aufrundete, und JEDER darauf folgende
+    #    HARTE Schnitt lag ein Bild zu spaet -- Bilder 113/125/138/150 wurden
+    #    zu 114/126/139/151. Die Blenden blieben richtig, weil xfade seinen
+    #    Versatz in Sekunden vorgegeben bekommt und ihn erzwingt.
+    #
+    #    Auf ffmpeg 6.1.1 war davon nichts zu sehen. Ohne die Messung im
+    #    gebauten Image waere der Fehler unentdeckt in den Markt gegangen.
     aktuell = "s0"
     for i in range(1, len(template.cuts)):
         ziel = f"x{i}"
@@ -234,7 +248,8 @@ def build_filter_graph(plan: FramePlan, template: CutTemplate, settings: RenderS
         teile.append(
             f"[{aktuell}][s{i}]{verbindung},"
             f"trim=end_frame={laenge},"
-            f"settb=1/{settings.fps}"
+            f"settb=1/{settings.fps},"
+            f"setpts=N"
             f"[{ziel}]"
         )
         aktuell = ziel
