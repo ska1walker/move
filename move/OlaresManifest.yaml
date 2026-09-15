@@ -52,8 +52,9 @@ spec:
     extracted statistically from a reference clip and stored as JSON.
 
     **Assembly** The assembler takes one cut template plus N clips and renders
-    a finished MP4 with ffmpeg. The edit is arithmetic, not inference, so the
-    same template and the same clips always produce the same file.
+    a finished MP4 with ffmpeg. The edit is arithmetic, not inference: cut
+    points land on the frame the plan names, and the same template with the
+    same clips produces the same file byte for byte on a given ffmpeg build.
 
     **Uploads** Source footage is uploaded by the user. Move ships no
     downloader.
