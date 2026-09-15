@@ -178,6 +178,69 @@ input[type='file']::file-selector-button:hover {
   border-color: var(--am-gold-hell);
 }
 
+/* Woher die Clips kommen. Eine Wahl, keine Handlung -- die primaere
+   Handlung bleibt der eine Knopf darunter. */
+.wahl {
+  border: var(--am-rahmen);
+  padding: var(--am-3) var(--am-4) var(--am-4);
+  margin: 0 0 var(--am-4);
+}
+
+.wahl legend {
+  padding: 0 var(--am-2);
+  font-size: 0.875rem;
+  color: var(--am-text-leise);
+}
+
+.wahl-zeile {
+  display: flex;
+  align-items: baseline;
+  gap: var(--am-2);
+  padding: var(--am-1) 0;
+  cursor: pointer;
+}
+
+.wahl-zeile input[type='radio'] {
+  accent-color: var(--am-gold);
+  margin: 0;
+}
+
+.wahl:disabled .wahl-zeile {
+  cursor: not-allowed;
+}
+
+/* Eine Einstellung im Template, mit ihrem Prompt. */
+.einstellung {
+  border-top: var(--am-rahmen);
+  padding: var(--am-3) 0 0;
+  margin-top: var(--am-3);
+}
+
+.einstellung-kopf {
+  display: flex;
+  align-items: baseline;
+  gap: var(--am-3);
+  margin-bottom: var(--am-2);
+  cursor: pointer;
+}
+
+textarea,
+input[type='text'] {
+  width: 100%;
+  padding: var(--am-2) var(--am-3);
+  background: var(--am-blau-900);
+  color: var(--am-text);
+  border: var(--am-rahmen);
+  font: inherit;
+  font-size: 0.9375rem;
+  resize: vertical;
+}
+
+textarea::placeholder,
+input[type='text']::placeholder {
+  color: var(--am-text-leise);
+}
+
 /* Genau eine primaere Handlung je Ansicht: Job anlegen. */
 .primaer {
   display: inline-block;

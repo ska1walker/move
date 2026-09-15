@@ -162,6 +162,29 @@ Entwicklungsmodus.
 Der Zustand eines Jobs steht als Wort da, nicht als Farbfleck — Farbe allein
 trägt keine Information (WCAG 1.4.1).
 
+## Clips: drei Wege
+
+Das Formular bietet, woher die Clips kommen sollen:
+
+| Wahl | was passiert |
+|---|---|
+| Platzhalter | der Worker erzeugt Flächen mit Index und Timecode. Kostet nichts. |
+| Eigene Dateien | genau eine MP4 je Einstellung, über den Upload-Pfad |
+| Von fal.ai erzeugen | eine Beschreibung je Einstellung |
+
+Beim dritten Weg steht zu jeder Einstellung ihre Dauer und die Bildgröße aus
+dem Template daneben — beides beeinflusst, was man sinnvollerweise
+beschreibt. Die Bildgröße hängt der Worker an den Prompt an.
+
+**Die Kosten stehen vor dem Knopf, nicht in der Rechnung:** „N Aufrufe bei
+fal.ai, jeder wird über deinen Schlüssel abgerechnet." Der Knopf bleibt
+gesperrt, solange eine Beschreibung fehlt, und die API weist einen `fal`-Clip
+ohne `prompt` mit HTTP 400 ab — bevor irgendetwas bezahlt wird.
+
+Der Schlüssel ist der **des Nutzers**, nicht des Betreibers. Auf Olares hat
+jede Installation ihren eigenen Namespace; eine Installation ist ein Kunde,
+und `olaresEnv` heißt, dass er seinen Schlüssel bei der Installation einträgt.
+
 ## Noch nicht da
 
 Template-Anlage im Web. Templates entstehen in v0 über

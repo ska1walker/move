@@ -66,6 +66,17 @@ export default function Seite() {
               name: v.name,
               shot_count: v.shot_count,
               duration_ms: v.duration_ms,
+              // Nur zur Anzeige, damit beim Schreiben eines Prompts
+              // sichtbar ist, wie lang die Einstellung wird und welche
+              // Bildgroesse das Template dafuer vorsieht. Verbindlich ist
+              // der FramePlan des Workers, nicht diese Rechnung.
+              einstellungen: v.cuts.map((c, i) => ({
+                index: i,
+                at_ms: c.at_ms,
+                dauer_ms:
+                  (i + 1 < v.cuts.length ? v.cuts[i + 1].at_ms : v.duration_ms) - c.at_ms,
+                shot_scale: c.shot_scale,
+              })),
             }))}
           />
         )}
