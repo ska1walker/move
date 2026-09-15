@@ -1,0 +1,50 @@
+# Stub-Werte fuer `helm lint` und `helm template` ausserhalb der Box.
+#
+# Diese Schluessel injiziert Olares zur LAUFZEIT. Lokal fehlen sie, deshalb
+# dieser Stub. Die Form gegen die Box pruefen, nicht raten — eine falsche Form
+# zeigt sich sonst nur als downloadFailed ohne Retry, mit dem Grund in
+# `kubectl logs -n os-framework app-service-0`.
+#
+# check-chart.sh rendert zusaetzlich eine Variante OHNE appCommon, um den Fall
+# einer Bestandsinstallation nachzustellen (leerer hostPath.path).
+
+userspace:
+  appData: /olares/userspaces/stub/Data/move
+  appCache: /olares/userspaces/stub/Cache/move
+  appCommon: /olares/userspaces/stub/Common
+  userData: /olares/userspaces/stub/Home
+
+bfl:
+  username: stub
+
+user:
+  zone: stub.olares.de
+
+cluster:
+  arch: amd64
+
+domain:
+  move: stub.olares.de
+
+olaresEnv: {}
+
+# Wird erst gebraucht, wenn v1 von SQLite auf die Olares-Postgres wechselt.
+# postgres:
+#   host: citus-headless.os-platform
+#   port: 5432
+#   username: stub
+#   password: stub
+#   databases:
+#     move: move_stub
+
+workloads:
+  move:
+    replicaCount: 1
+  moveworker:
+    replicaCount: 1
+
+images:
+  web:
+    tag: ""
+  worker:
+    tag: ""

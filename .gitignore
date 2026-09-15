@@ -1,0 +1,15 @@
+node_modules/
+.next/
+dist/
+*.tgz
+.wrangler/
+__pycache__/
+*.pyc
+.venv/
+.env
+.env.local
+fixtures/
+/tmp/
+.DS_Store
+# iCloud-Doppel: Repos unter ~/Documents erzeugen " 2"-Dateien, die tsc brechen
+* 2.*
