@@ -53,8 +53,45 @@ Image-Tags aus `.Chart.AppVersion`, kein GPU-Bedarf in v0.
 | Repo auf Public stellen | Entschieden, aber noch nicht getan. Danach liefert die `icon.png`-URL im Manifest HTTP 200. |
 | ghcr-Pakete auf Public stellen | Einmalig nach dem ersten Push. Pakete sind auch in einem öffentlichen Repo zunächst privat. |
 | `docs/design-guide.md` | s. o. — die Oberfläche folgt bisher der Zusammenfassung im Platzhalter, nicht dem Original. |
-| `envs:`-Block im Manifest | Damit Olares den `FAL_KEY` bei der Installation abfragt. AGENTS.md und CLAUDE.md widersprechen sich hier, `check-chart.sh` setzt CLAUDE.md durch — gegen ein Live-Chart zu klären. |
 | erster echter fal-Aufruf | Die Generierung ist gebaut und getestet, aber nur gegen ein Doppel. fal.ai ist vom Proxy gesperrt. |
+
+## Nutzereingaben bei der Installation
+
+Der `envs:`-Block im Manifest fragt drei Werte ab, alle optional:
+
+| Name | Typ | Bedeutung |
+|---|---|---|
+| `FAL_KEY` | `password` | eigener fal.ai-Schlüssel. Leer heißt: nur Platzhalter und eigene Uploads |
+| `MOVE_FAL_MODEL` | `string` | Vorgabemodell. Leer heißt: der Standard aus `generierung.py` |
+| `MOVE_FAL_MAX_CLIPS` | `int` | Obergrenze bezahlter Aufrufe je Job, Vorgabe 12. `0` schaltet die Generierung ab |
+
+Alle drei sind bewusst `required: false`. Die Pipeline läuft ohne einen
+einzigen Modellaufruf durch; eine Installation, die nur Platzhalter will,
+darf nicht an einem fehlenden Schlüssel hängen.
+
+### Der Widerspruch, gegen den Katalog aufgelöst
+
+AGENTS.md verlangte für ein Nutzer-Env ein `valueFrom` auf einen Namen, den
+CLAUDE.md in Chart-Dateien verbietet und `check-chart.sh` zurückweist.
+Gemessen an fünf Apps im offiziellen Olares-Katalog (`sillytavern`,
+`karakeep`, `firecrawl`, `flowise`, `openwebui`) gibt es **zwei** Formen:
+
+- `valueFrom` verweist auf einen **geschlossenen Satz kontoweiter
+  Olares-Einstellungen** (OpenAI-Schlüssel, Hugging-Face-Token und ein paar
+  mehr), die Olares selbst verwaltet. Für fal existiert dort kein Eintrag.
+- Einen Anbieter, den Olares nicht kennt, deklariert man **schlicht mit
+  `type: password` ohne `valueFrom`** — genau das tut `sillytavern` für seinen
+  Anthropic- und Google-Schlüssel.
+
+move nimmt die zweite Form. Damit kommt das verbotene Präfix im Repo
+überhaupt nicht vor, und beide Dokumente behalten recht. Nebenbei gemessen:
+der `envs:`-Block steht in allen fünf Apps **zuletzt**, nach `options:` — die
+Reihenfolge aus AGENTS.md hält keine von ihnen ein.
+
+Ein neuer Guard hält beide Seiten zusammen: jedes deklarierte Env muss von
+einem Template gelesen werden, und jeder Zugriff auf `olaresEnv` muss
+deklariert sein. Sonst fragt der Installationsdialog etwas ab, das nichts
+entgegennimmt — oder ein Template liest einen Wert, den niemand setzen kann.
 
 Optional, falls vorhanden: `scripts/release.sh` und
 `scripts/regen-migrations.py` aus dem Insilo-Repo. `check-chart.sh` ruft den

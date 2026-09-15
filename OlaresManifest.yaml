@@ -99,3 +99,47 @@ options:
   dependencies:
     - name: olares
       version: '>=1.12.6-0'
+
+# Was Olares bei der Installation abfragt.
+#
+# Gemessen an fuenf Apps im offiziellen Katalog (sillytavern, karakeep,
+# firecrawl, flowise, openwebui), nicht geraten:
+#
+#   - Der Block steht in allen fuenf ZULETZT, nach options:. Die Reihenfolge
+#     aus AGENTS.md (permission, envs, options) haelt keine von ihnen ein.
+#   - Einen Anbieterschluessel, den Olares nicht selbst verwaltet, deklariert
+#     man einfach mit `type: password` und OHNE valueFrom. valueFrom gibt es
+#     nur fuer den geschlossenen Satz kontoweiter Olares-Einstellungen
+#     (OPENAI_APIKEY, HUGGINGFACE_TOKEN und ein paar mehr) -- fuer fal gibt es
+#     dort keinen Eintrag, also traegt der Nutzer den Schluessel hier ein.
+#     Damit loest sich der Widerspruch: das Praefix jener Einstellungen kommt
+#     in move gar nicht vor. Es steht hier auch bewusst nicht ausgeschrieben,
+#     denn der Manifest-Pruefer durchsucht den rohen Dateitext danach.
+#   - `type`-Werte, die im Katalog wirklich vorkommen: string, password, bool,
+#     url, int. `default` immer als gequoteter String, auch bei int.
+#
+# ALLE Eintraege sind optional. Die Pipeline laeuft ohne einen einzigen
+# Modellaufruf durch -- eine Installation, die nur Platzhalter und eigene
+# Uploads will, darf nicht an einem fehlenden Schluessel haengen.
+#
+# Gelesen wird jeder Wert im Chart als (.Values.olaresEnv).<name>.
+envs:
+  - envName: FAL_KEY
+    type: password
+    required: false
+    editable: true
+    applyOnChange: true
+    description: "Your own fal.ai API key, used to generate clips. fal bills per call against this key. Leave it empty to work with placeholder clips and your own uploads only: a job that asks for generated clips then fails with a plain message instead of silently doing nothing."
+  - envName: MOVE_FAL_MODEL
+    type: string
+    required: false
+    editable: true
+    applyOnChange: true
+    description: "Default fal.ai video model, for example fal-ai/ltx-video. Leave empty to use the worker's built-in default. A single job can override it."
+  - envName: MOVE_FAL_MAX_CLIPS
+    type: int
+    required: false
+    editable: true
+    applyOnChange: true
+    default: "12"
+    description: "Most generated clips a single job may request. Checked before the first paid call, so an oversized job costs nothing. Set it to 0 to switch generation off entirely and allow placeholders and uploads only."

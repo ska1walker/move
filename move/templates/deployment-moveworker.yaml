@@ -7,6 +7,13 @@
 #
 # Das Label ist bewusst app: moveworker, nicht app: move — mit app: move wuerde
 # der Service des Frontends den Worker als Endpoint aufnehmen.
+#
+# $oe: die Nutzereingaben aus dem envs:-Block des Manifests. `| default dict`
+# statt direkter Dereferenzierung, weil ein Markt-Upgrade die Werte der
+# ERSTinstallation zurueckspielt — auf einer Bestandsbox fehlt der Block, und
+# .Values.olaresEnv.X waere dort ein nil-Pointer. Dieselbe Form benutzt
+# openwebui im offiziellen Katalog.
+{{- $oe := .Values.olaresEnv | default dict -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -64,16 +71,35 @@ spec:
               value: "1"
             - name: MOVE_POLL_INTERVAL_MS
               value: "2000"
-            # Schluessel fuer die Clip-Generierung. Kommt aus der
-            # Nutzereingabe bei der Installation und steht an keiner Stelle
-            # im Repo. Leer heisst: keine Generierung -- ein Job mit
-            # source 'fal' scheitert dann mit Klartext, statt still nichts
-            # zu tun.
+            # Die drei Werte aus dem envs:-Block. Alle in derselben Form
+            # gelesen: `hasKey` entscheidet, ob der Nutzer etwas gesetzt hat,
+            # und NICHT `| default ""`.
+            #
+            # Der Grund steckt in MOVE_FAL_MAX_CLIPS und kostet Geld. 0 heisst
+            # dort "Generierung aus". In Helm ist 0 aber leer im Sinne von
+            # `default`, also machte `0 | default ""` daraus einen leeren Wert
+            # — und ein leerer Wert ist im Worker bewusst die Vorgabe 12. Wer
+            # abschaltet, bekaeme zwoelf bezahlte Aufrufe erlaubt. Dieselbe
+            # Falle nennt CLAUDE.md fuer Booleans; sie gilt fuer Zahlen genauso.
+            #
+            # Fuer FAL_KEY und MOVE_FAL_MODEL waere `default ""` harmlos. Sie
+            # stehen trotzdem in derselben Form: zwei Schreibweisen
+            # nebeneinander laden dazu ein, beim naechsten env die falsche zu
+            # kopieren.
+            #
+            # Der Schluessel selbst steht an keiner Stelle im Repo. Leer heisst
+            # keine Generierung -- ein Job mit source 'fal' scheitert dann mit
+            # Klartext, statt still nichts zu tun.
             - name: FAL_KEY
-              value: {{ (.Values.olaresEnv).FAL_KEY | default "" | quote }}
+              value: {{ if hasKey $oe "FAL_KEY" }}{{ $oe.FAL_KEY | quote }}{{ else }}{{ "" | quote }}{{ end }}
             # Leer heisst: der Standard aus generierung.py.
             - name: MOVE_FAL_MODEL
-              value: {{ (.Values.olaresEnv).MOVE_FAL_MODEL | default "" | quote }}
+              value: {{ if hasKey $oe "MOVE_FAL_MODEL" }}{{ $oe.MOVE_FAL_MODEL | quote }}{{ else }}{{ "" | quote }}{{ end }}
+            # Leer heisst: DEFAULT_MAX_FAL_CLIPS aus runner.py. Ein Tippfehler
+            # faellt dort nicht still auf die Vorgabe zurueck, sondern
+            # scheitert.
+            - name: MOVE_FAL_MAX_CLIPS
+              value: {{ if hasKey $oe "MOVE_FAL_MAX_CLIPS" }}{{ $oe.MOVE_FAL_MAX_CLIPS | quote }}{{ else }}{{ "" | quote }}{{ end }}
           volumeMounts:
             - name: appdata
               mountPath: /app/data

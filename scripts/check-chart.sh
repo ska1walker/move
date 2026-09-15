@@ -487,6 +487,74 @@ else
   ok "kein OLARES_USER_ im Chart-Text"
 fi
 
+# ---------------------------------------------------------------------------
+# 4b. envs: im Manifest <-> olaresEnv-Zugriffe in den Templates
+#
+#     Zwei Fehler, die beide still bleiben:
+#
+#     Ein Template, das (.Values.olaresEnv).X liest, ohne dass X unter envs:
+#     deklariert ist, bekommt fuer immer den leeren Default — Olares fragt den
+#     Wert nie ab, es gibt keinen Weg, ihn zu setzen. Die Klammerform macht
+#     das doppelt unsichtbar: kein nil-Pointer, kein Rendern-Fehler, nur eine
+#     Funktion, die nie greift.
+#
+#     Umgekehrt ist ein deklariertes env, das kein Template liest, eine Luege
+#     im Installationsdialog: der Nutzer traegt einen Schluessel ein, und
+#     nichts nimmt ihn entgegen.
+#
+#     Deshalb muessen beide Mengen gleich sein. Olares kann deklarierte envs
+#     auch selbst in den Container injizieren (so macht es sillytavern im
+#     offiziellen Katalog); move verdrahtet bewusst alles im Chart, damit im
+#     gerenderten Deployment steht, was ankommt.
+# ---------------------------------------------------------------------------
+
+section "envs: im Manifest == olaresEnv-Zugriffe der Templates"
+
+DEKLARIERT="$(awk '
+  /^envs:/ { f=1; next }
+  f && /^[a-zA-Z]/ { f=0 }
+  f && /envName:/ { gsub(/["'"'"']/,"",$NF); print $NF }
+' "$MANIFEST_FILE" | sort -u || true)"
+
+# Drei Schreibweisen, alle drei zaehlen als Zugriff: die Klammerform
+# (.Values.olaresEnv).X, der hasKey-Test und ein Zugriff ueber die Variable
+# $oe. Wer eine vierte einfuehrt, muss sie hier eintragen — sonst meldet der
+# Guard die envs als ungelesen, statt sie stumm durchzulassen.
+#
+# Kommentarzeilen fliegen vorher raus. Ohne das schlug der Guard auf die
+# Erklaerung an, die im Deployment-Kopf `.Values.olaresEnv.X` als Prosa nennt,
+# und verlangte ein env namens X.
+OHNE_KOMMENTAR="$(cat "$TEMPLATES_DIR"/*.yaml 2>/dev/null | grep -vE '^[[:space:]]*#' || true)"
+
+GELESEN="$( { echo "$OHNE_KOMMENTAR" | grep -oE '\.Values\.olaresEnv\)?\.[A-Za-z_][A-Za-z0-9_]*' | sed -E 's/.*\.//'
+             echo "$OHNE_KOMMENTAR" | grep -oE 'hasKey[[:space:]]+\$oe[[:space:]]+"[A-Za-z_][A-Za-z0-9_]*"' | sed -E 's/.*"([^"]+)"/\1/'
+             echo "$OHNE_KOMMENTAR" | grep -oE '\$oe\.[A-Za-z_][A-Za-z0-9_]*' | sed -E 's/.*\.//'
+           } | sort -u || true)"
+
+if [[ -z "$DEKLARIERT" && -z "$GELESEN" ]]; then
+  skip "keine envs deklariert und keine gelesen"
+else
+  env_drift=0
+  # Gelesen, aber nicht deklariert.
+  while IFS= read -r e; do
+    [[ -n "$e" ]] || continue
+    fail "Template liest olaresEnv.$e, aber envs: deklariert es nicht — der Wert bleibt fuer immer leer"
+    grep -rn "olaresEnv)\?\.$e" "$TEMPLATES_DIR" | sed 's/^/      /'
+    env_drift=1
+  done < <(comm -13 <(echo "$DEKLARIERT") <(echo "$GELESEN") || true)
+
+  # Deklariert, aber nicht gelesen.
+  while IFS= read -r e; do
+    [[ -n "$e" ]] || continue
+    fail "envs: deklariert $e, aber kein Template liest es — der Installationsdialog fragt etwas ab, das nichts entgegennimmt"
+    env_drift=1
+  done < <(comm -23 <(echo "$DEKLARIERT") <(echo "$GELESEN") || true)
+
+  if [[ "$env_drift" -eq 0 ]]; then
+    ok "envs: und Templates deckungsgleich ($(echo "$DEKLARIERT" | tr '\n' ' '))"
+  fi
+fi
+
 if grep -rEn "\{\{[[:space:]]*\.Release\.Name" "$TEMPLATES_DIR" >/dev/null 2>&1; then
   fail "metadata.name aus .Release.Name — muss literal '$APP' sein"
 else
