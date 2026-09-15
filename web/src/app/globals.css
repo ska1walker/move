@@ -1,0 +1,275 @@
+/*
+ * AImighty-Standard, verbindlich nach docs/design-guide.md.
+ *
+ * Hanseatenblau + Gold, keine dritte Farbfamilie. Kein Verlauf, kein
+ * Schatten. Keine festen Pixelwerte -- alle Masse als --am-*-Vielfache der
+ * Grundeinheit 4 px, in rem, damit sie der Schriftgroesse des Nutzers folgen.
+ *
+ * Geist Sans und Geist Mono liegen im Repo und im Image. Kein Import von
+ * fremden Servern, auch nicht im Entwicklungsmodus.
+ */
+
+@font-face {
+  font-family: 'Geist';
+  src: url('/fonts/Geist-Variable.woff2') format('woff2-variations');
+  font-weight: 100 900;
+  font-display: swap;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Geist Mono';
+  src: url('/fonts/GeistMono-Variable.woff2') format('woff2-variations');
+  font-weight: 100 900;
+  font-display: swap;
+  font-style: normal;
+}
+
+:root {
+  --am-blau-900: #051729;
+  --am-blau-800: #0a2138;
+  --am-blau-700: #14304a;
+  --am-gold: #caa960;
+  --am-gold-hell: #e2cc96;
+
+  /* Neutrale Tinten des Blaus, keine eigene Farbfamilie. */
+  --am-text: #dde5ed;
+  --am-text-leise: #95a8bb;
+
+  /* Grundeinheit 4 px. */
+  --am-1: 0.25rem;
+  --am-2: 0.5rem;
+  --am-3: 0.75rem;
+  --am-4: 1rem;
+  --am-5: 1.25rem;
+  --am-6: 1.5rem;
+  --am-8: 2rem;
+  --am-12: 3rem;
+  --am-16: 4rem;
+
+  --am-rahmen: 1px solid var(--am-blau-700);
+  --am-breite: 60rem;
+
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  /* Kein fester Pixelwert: der Nutzer bestimmt die Grundgroesse. */
+  font-size: 100%;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--am-blau-900);
+  color: var(--am-text);
+  font-family: 'Geist', system-ui, sans-serif;
+  font-weight: 400;
+  line-height: 1.55;
+}
+
+code,
+pre,
+.mono {
+  font-family: 'Geist Mono', ui-monospace, monospace;
+}
+
+a {
+  color: var(--am-gold);
+  text-underline-offset: 0.2em;
+}
+
+a:focus-visible,
+button:focus-visible,
+select:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--am-gold);
+  outline-offset: var(--am-1);
+}
+
+.huelle {
+  max-width: var(--am-breite);
+  margin: 0 auto;
+  padding: var(--am-8) var(--am-5) var(--am-16);
+}
+
+.kopf {
+  display: flex;
+  align-items: baseline;
+  gap: var(--am-3);
+  border-bottom: var(--am-rahmen);
+  padding-bottom: var(--am-4);
+  margin-bottom: var(--am-8);
+}
+
+.kopf h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.kopf p {
+  margin: 0;
+  color: var(--am-text-leise);
+  font-size: 0.875rem;
+}
+
+h2 {
+  font-size: 1.0625rem;
+  font-weight: 500;
+  margin: 0 0 var(--am-4);
+}
+
+.block {
+  border: var(--am-rahmen);
+  background: var(--am-blau-800);
+  padding: var(--am-5);
+  margin-bottom: var(--am-6);
+}
+
+.leise {
+  color: var(--am-text-leise);
+  font-size: 0.875rem;
+}
+
+.feld {
+  display: block;
+  margin-bottom: var(--am-4);
+}
+
+.feld > span {
+  display: block;
+  margin-bottom: var(--am-2);
+  font-size: 0.875rem;
+  color: var(--am-text-leise);
+}
+
+select,
+input[type='file'] {
+  width: 100%;
+  padding: var(--am-2) var(--am-3);
+  background: var(--am-blau-900);
+  color: var(--am-text);
+  border: var(--am-rahmen);
+  font: inherit;
+  font-size: 0.9375rem;
+}
+
+/* Genau eine primaere Handlung je Ansicht: Job anlegen. */
+.primaer {
+  display: inline-block;
+  padding: var(--am-3) var(--am-6);
+  background: var(--am-gold);
+  color: var(--am-blau-900);
+  border: 1px solid var(--am-gold);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.primaer:hover:not(:disabled) {
+  background: var(--am-gold-hell);
+  border-color: var(--am-gold-hell);
+}
+
+.primaer:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.sekundaer {
+  display: inline-block;
+  padding: var(--am-2) var(--am-4);
+  background: transparent;
+  color: var(--am-gold);
+  border: 1px solid var(--am-gold);
+  font: inherit;
+  cursor: pointer;
+}
+
+.sekundaer:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9375rem;
+}
+
+th,
+td {
+  text-align: left;
+  padding: var(--am-2) var(--am-3);
+  border-bottom: var(--am-rahmen);
+  vertical-align: top;
+}
+
+th {
+  color: var(--am-text-leise);
+  font-weight: 500;
+  font-size: 0.8125rem;
+}
+
+/* Zustand als Wort, nicht als Farbfleck -- Farbe allein traegt keine
+   Information (WCAG 1.4.1). */
+.stand {
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 0.8125rem;
+}
+
+.stand-done {
+  color: var(--am-gold);
+}
+
+.stand-failed {
+  color: var(--am-text);
+  border-bottom: 2px solid var(--am-gold);
+}
+
+progress {
+  width: 100%;
+  height: var(--am-2);
+  appearance: none;
+  border: none;
+  background: var(--am-blau-700);
+}
+
+progress::-webkit-progress-bar {
+  background: var(--am-blau-700);
+}
+
+progress::-webkit-progress-value {
+  background: var(--am-gold);
+}
+
+progress::-moz-progress-bar {
+  background: var(--am-gold);
+}
+
+video {
+  width: 100%;
+  max-width: 100%;
+  border: var(--am-rahmen);
+  background: var(--am-blau-900);
+}
+
+.meldung {
+  border: var(--am-rahmen);
+  border-left: 2px solid var(--am-gold);
+  padding: var(--am-3) var(--am-4);
+  margin-top: var(--am-4);
+  font-size: 0.9375rem;
+}
+
+pre {
+  overflow-x: auto;
+  font-size: 0.8125rem;
+  margin: 0;
+}

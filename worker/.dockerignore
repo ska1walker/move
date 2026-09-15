@@ -1,9 +1,0 @@
-# Tests gehoeren nicht ins Image. Fuer die Pruefung wird tests/ zur Laufzeit
-# eingehaengt, damit die Suite im gebauten Image laufen kann, ohne darin zu
-# liegen.
-tests/
-README.md
-Dockerfile
-.dockerignore
-__pycache__/
-*.pyc

@@ -5,6 +5,14 @@
 # ohne Index und Timecode, und ein Platzhalter ohne Timecode ist zum Pruefen
 # des Schnitts wertlos.
 #
+# BAUKONTEXT IST DAS REPO-WURZELVERZEICHNIS, nicht worker/:
+#
+#   docker build -f worker/Dockerfile -t moveworker:26.9.1 .
+#
+# Grund: db/schema.sql liegt ausserhalb von worker/ und wird von Web und
+# Worker gemeinsam gelesen. Zwei Kopien des Schemas in zwei Sprachen
+# driften still auseinander.
+#
 # Der Tag wird beim Bauen von aussen gesetzt und muss der Chart-AppVersion
 # entsprechen -- das Chart leitet ihn aus .Chart.AppVersion ab, nicht aus
 # values.yaml.
@@ -31,12 +39,14 @@ RUN ffmpeg -hide_banner -filters | awk '$2=="drawtext"{gefunden=1} END{exit !gef
 RUN useradd --uid 1000 --user-group --create-home --shell /usr/sbin/nologin move
 
 WORKDIR /app
-COPY move_worker/ ./move_worker/
-COPY examples/ ./examples/
+COPY worker/move_worker/ ./move_worker/
+COPY worker/examples/ ./examples/
+COPY db/schema.sql ./db/schema.sql
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    MOVE_DATA_DIR=/app/data
+    MOVE_DATA_DIR=/app/data \
+    MOVE_SCHEMA_FILE=/app/db/schema.sql
 
 USER 1000:1000
 

@@ -1,0 +1,20 @@
+# Baukontext ist das Repo-Wurzelverzeichnis (beide Images brauchen
+# db/schema.sql). Alles, was nicht hineingehoert, steht hier.
+
+.git/
+.github/
+node_modules/
+**/node_modules/
+**/.next/
+**/__pycache__/
+**/*.pyc
+dist/
+*.tgz
+worker/tests/
+worker/tools/
+docs/
+*.md
+!db/*.sql
+icon.png
+move/
+scripts/

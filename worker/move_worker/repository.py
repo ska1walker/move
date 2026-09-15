@@ -8,10 +8,14 @@ geloescht wird.
 Alles laeuft durch dieses Modul, damit der Wechsel auf die Olares-Postgres in
 v1 genau eine Datei betrifft. Kein SQL ausserhalb.
 
-Das Schema steht hier als Konstante und nicht unter `db/migrations/`: jener
-Ordner ist fuer die Postgres-Migrationen gedacht, die ueber eine ConfigMap ins
-Chart wandern. Fuer SQLite waere das ein Umweg ueber den Cluster, den niemand
-braucht.
+Die DDL steht NICHT hier, sondern in `db/schema.sql` -- derselben Datei, die
+auch das Web liest. Zwei Schemata in zwei Sprachen driften auseinander, und
+zwar still: ein fehlender CHECK nimmt kaputte Daten an, ein fehlender Index
+macht nur langsam.
+
+Nicht unter `db/migrations/`: jener Ordner ist fuer die Postgres-Migrationen
+gedacht, die ueber eine ConfigMap ins Chart wandern. Fuer SQLite waere das ein
+Umweg ueber den Cluster, den niemand braucht.
 
 Zeitstempel sind ueberall ganze Millisekunden.
 """
@@ -20,6 +24,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sqlite3
 import time
 import uuid
@@ -37,39 +42,37 @@ STATUS_DONE = "done"
 STATUS_FAILED = "failed"
 STATUS_ALLE = (STATUS_QUEUED, STATUS_RUNNING, STATUS_DONE, STATUS_FAILED)
 
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS cut_template (
-    id           TEXT PRIMARY KEY,
-    name         TEXT NOT NULL,
-    source_label TEXT NOT NULL DEFAULT '',
-    duration_ms  INTEGER NOT NULL,
-    cuts         TEXT NOT NULL,
-    beat_grid    TEXT,
-    shot_count   INTEGER NOT NULL,
-    created_at   INTEGER NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS render_job (
-    id          TEXT PRIMARY KEY,
-    template_id TEXT NOT NULL REFERENCES cut_template(id),
-    status      TEXT NOT NULL CHECK (status IN ('queued','running','done','failed')),
-    error       TEXT,
-    clips       TEXT NOT NULL,
-    output_uri  TEXT,
-    created_at  INTEGER NOT NULL,
-    started_at  INTEGER,
-    finished_at INTEGER
-);
-
--- Die Abfrage der Warteschlange laeuft bei jedem Durchlauf. Ohne Index
--- durchsucht SQLite die ganze Tabelle, auch wenn nichts zu tun ist.
-CREATE INDEX IF NOT EXISTS render_job_queue
-    ON render_job (status, created_at);
-"""
-
-
 class RepositoryError(RuntimeError):
     """Ein Datenzugriff ist gescheitert."""
+
+
+# Kandidaten fuer die Schemadatei. MOVE_SCHEMA_FILE gewinnt immer.
+#
+# Die DDL steht bewusst NICHT hier: Web und Worker lesen dieselbe Datei
+# (db/schema.sql), damit zwei Sprachen nicht zwei Schemata bauen.
+SCHEMA_KANDIDATEN = (
+    Path("/app/db/schema.sql"),
+    Path(__file__).resolve().parent.parent.parent / "db" / "schema.sql",
+)
+
+
+def schema_file() -> Path:
+    gesetzt = os.environ.get("MOVE_SCHEMA_FILE")
+    if gesetzt:
+        pfad = Path(gesetzt)
+        if not pfad.is_file():
+            raise RepositoryError(f"MOVE_SCHEMA_FILE zeigt auf {pfad}, dort liegt keine Datei.")
+        return pfad
+
+    for kandidat in SCHEMA_KANDIDATEN:
+        if kandidat.is_file():
+            return kandidat
+
+    raise RepositoryError(
+        "db/schema.sql nicht gefunden. Das Image muss die Datei mitbringen, "
+        "oder MOVE_SCHEMA_FILE muss auf sie zeigen. Gesucht wurde in: "
+        + ", ".join(str(k) for k in SCHEMA_KANDIDATEN)
+    )
 
 
 def now_ms() -> int:
@@ -168,8 +171,9 @@ class Repository:
 
     def migrate(self) -> None:
         """Legt das Schema an. Mehrfach aufrufbar."""
-        self.connect().executescript(SCHEMA)
-        LOG.info("Schema bereit", extra={"db": str(self.db_path)})
+        datei = schema_file()
+        self.connect().executescript(datei.read_text(encoding="utf-8"))
+        LOG.info("Schema bereit", extra={"db": str(self.db_path), "schema": str(datei)})
 
     # -- Templates --------------------------------------------------------
 

@@ -1,8 +1,11 @@
-# CI: Guards, Worker-Tests, Worker-Image.
+# CI: Guards, Tests, beide Images.
 #
-# Baut das Image, veroeffentlicht es aber NICHT. Ein Push nach ghcr ist ein
+# Baut die Images, veroeffentlicht sie aber NICHT. Ein Push nach ghcr ist ein
 # eigener, bewusster Schritt -- das Paket muss dafuer oeffentlich sein, sonst
 # endet die Installation auf der Box in registry_error.
+#
+# Beide Images werden mit dem Repo-Wurzelverzeichnis als Baukontext gebaut,
+# weil db/schema.sql von Web und Worker gemeinsam gelesen wird.
 
 name: ci
 
@@ -52,6 +55,30 @@ jobs:
         working-directory: worker
         run: python3 -m unittest discover -s tests -t . --verbose
 
+  web-typecheck:
+    name: Web-Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Abhaengigkeiten
+        working-directory: web
+        run: npm ci --no-audit --no-fund
+
+      - name: tsc
+        working-directory: web
+        run: npm run typecheck
+
+      - name: Bauen
+        working-directory: web
+        run: npm run build
+
   worker-image:
     name: Worker-Image
     runs-on: ubuntu-latest
@@ -67,8 +94,7 @@ jobs:
           echo "Tag: $tag"
 
       - name: Bauen
-        working-directory: worker
-        run: docker build -t "moveworker:${{ steps.version.outputs.tag }}" .
+        run: docker build -f worker/Dockerfile -t "moveworker:${{ steps.version.outputs.tag }}" .
 
       - name: ffmpeg im Image
         run: |
@@ -79,6 +105,12 @@ jobs:
           docker run --rm --entrypoint ffmpeg "$img" -hide_banner -filters \
             | awk '$2=="drawtext"{gefunden=1} END{exit !gefunden}'
           docker run --rm --entrypoint sh "$img" -c 'test -f "$MOVE_FONT_FILE"'
+
+      - name: Schema ist im Image und stimmt mit dem Repo ueberein
+        run: |
+          img="moveworker:${{ steps.version.outputs.tag }}"
+          docker run --rm --entrypoint cat "$img" /app/db/schema.sql > /tmp/im-image.sql
+          diff -u db/schema.sql /tmp/im-image.sql
 
       - name: Nicht als root
         run: |
@@ -118,3 +150,78 @@ jobs:
           docker run --rm -v /tmp/movedata:/app/data "$img" jobs | tee /tmp/jobs.txt
           grep -q 'done *1' /tmp/jobs.txt || { echo "kein fertiger Job"; exit 1; }
           ls -la /tmp/movedata/renders/
+
+  web-image:
+    name: Web-Image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tag aus Chart.yaml lesen
+        id: version
+        run: |
+          tag="$(grep -E '^appVersion:' move/Chart.yaml | awk '{print $2}')"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Bauen
+        run: docker build -f web/Dockerfile -t "move:${{ steps.version.outputs.tag }}" .
+
+      - name: Nicht als root, lauscht auf 0.0.0.0
+        run: |
+          img="move:${{ steps.version.outputs.tag }}"
+          uid="$(docker run --rm --entrypoint id "$img" -u)"
+          test "$uid" = "1000" || { echo "laeuft als UID $uid, erwartet 1000"; exit 1; }
+          # Das standalone-Image lauscht nur auf $HOSTNAME.
+          host="$(docker run --rm --entrypoint printenv "$img" HOSTNAME)"
+          test "$host" = "0.0.0.0" || { echo "HOSTNAME=$host, erwartet 0.0.0.0"; exit 1; }
+
+      - name: Schema ist im Image und stimmt mit dem Repo ueberein
+        run: |
+          img="move:${{ steps.version.outputs.tag }}"
+          docker run --rm --entrypoint cat "$img" /app/db/schema.sql > /tmp/im-image.sql
+          diff -u db/schema.sql /tmp/im-image.sql
+
+      - name: Keine eingebrannte Build-Adresse
+        run: |
+          # NEXT_PUBLIC_* und rewrites()-Ziele lassen sich nach dem Build nicht
+          # mehr aendern. Das Bundle darf deshalb keine enthalten.
+          img="move:${{ steps.version.outputs.tag }}"
+          docker run --rm --entrypoint printenv "$img" | grep -i '^NEXT_PUBLIC' \
+            && { echo "NEXT_PUBLIC_* im Image gesetzt"; exit 1; } || true
+
+      - name: Server starten und Zeitlimit pruefen
+        run: |
+          img="move:${{ steps.version.outputs.tag }}"
+          mkdir -p /tmp/webdata && chmod 777 /tmp/webdata
+          docker run -d --name moveweb -p 3000:3000 -v /tmp/webdata:/app/data "$img"
+          for i in $(seq 1 30); do
+            curl -sf localhost:3000/api/health >/dev/null && break
+            sleep 1
+          done
+          curl -sf localhost:3000/api/health | tee /tmp/health.json
+          echo
+          # Nodes Vorgabe waere 300000. Der --require-Patch muss greifen,
+          # sonst endet ein langsamer Upload in HTTP 408.
+          docker logs moveweb 2>&1 | grep -F '[server-zeitlimit]' | tee /tmp/zeitlimit.txt
+          grep -q 'requestTimeout=7200000ms' /tmp/zeitlimit.txt \
+            || { echo "requestTimeout nicht angehoben"; exit 1; }
+
+      - name: Upload ueber 10 MB kommt VOLLSTAENDIG an
+        run: |
+          # Der teuerste gemessene Fehler des Projekts: liegt /api/uploads im
+          # Matcher der Middleware, kappt Next 15.5 den Strom bei rund 10 MB
+          # UND meldet HTTP 200. Aus 20.000.000 Bytes wurden 10.449.920, und
+          # die Datei sah vollstaendig aus.
+          #
+          # Dieser Schritt ist der Regressionstest dafuer.
+          { printf '\x00\x00\x00\x20ftypisom'; head -c 19999988 /dev/urandom; } > /tmp/gross.mp4
+          ls -l /tmp/gross.mp4
+          antwort="$(curl -s -X POST --data-binary @/tmp/gross.mp4 \
+            'localhost:3000/api/uploads?name=gross.mp4')"
+          echo "$antwort"
+          echo "$antwort" | grep -q '"bytes":20000000' \
+            || { echo "Upload kam NICHT vollstaendig an"; docker logs moveweb; exit 1; }
+
+      - name: Aufraeumen
+        if: always()
+        run: docker rm -f moveweb 2>/dev/null || true
