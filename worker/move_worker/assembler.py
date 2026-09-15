@@ -201,9 +201,23 @@ def build_filter_graph(plan: FramePlan, template: CutTemplate, settings: RenderS
             f"[s{i}]"
         )
 
-    # 2. Paarweise zusammenfuegen. `settb` nach jedem Schritt, weil `concat`
-    #    die Zeitbasis auf 1/1000000 setzt und xfade danach mit
-    #    "timebase do not match" abbricht.
+    # 2. Paarweise zusammenfuegen.
+    #
+    #    `trim=end_frame` nach jedem Schritt schreibt die Laenge des Stroms
+    #    fest, statt sie dem Filter zu ueberlassen. Gemessen: ffmpeg 5.1
+    #    (Debian bookworm, also das Worker-Image) liefert aus derselben
+    #    xfade-Kette ein Bild MEHR als 6.1.1, und damit lag jeder folgende
+    #    Schnitt ein Bild zu spaet -- bei gleicher Gesamtlaenge, weil
+    #    `-frames:v` am Ende abschneidet. Der Fehler war also nur an der
+    #    Grenze zu sehen, nicht an der Laufzeit.
+    #
+    #    Hier ist der Plan die Wahrheit, nicht die Buchhaltung des Filters.
+    #    Liefert xfade zu WENIGE Bilder, kann trim das nicht auffuellen --
+    #    dann ist das Ergebnis zu kurz und die Laengenpruefung in `assemble`
+    #    schlaegt an.
+    #
+    #    `settb` ist noetig, weil `concat` die Zeitbasis auf 1/1000000 setzt
+    #    und xfade danach mit "timebase do not match" abbricht.
     aktuell = "s0"
     for i in range(1, len(template.cuts)):
         ziel = f"x{i}"
@@ -215,7 +229,14 @@ def build_filter_graph(plan: FramePlan, template: CutTemplate, settings: RenderS
             )
         else:
             verbindung = "concat=n=2:v=1:a=0"
-        teile.append(f"[{aktuell}][s{i}]{verbindung},settb=1/{settings.fps}[{ziel}]")
+
+        laenge = plan.start[i] + plan.source[i]
+        teile.append(
+            f"[{aktuell}][s{i}]{verbindung},"
+            f"trim=end_frame={laenge},"
+            f"settb=1/{settings.fps}"
+            f"[{ziel}]"
+        )
         aktuell = ziel
 
     return ";".join(teile), aktuell

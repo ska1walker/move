@@ -149,6 +149,21 @@ class TestFilterGraph(unittest.TestCase):
         """concat setzt die Zeitbasis auf 1/1000000, xfade bricht danach ab."""
         self.assertEqual(self.graph.count("settb=1/25"), 8 + 7)
 
+    def test_jeder_schritt_wird_auf_seine_laenge_festgeschrieben(self):
+        """Der Plan ist die Wahrheit, nicht die Buchhaltung des Filters.
+
+        ffmpeg 5.1 liefert aus derselben xfade-Kette ein Bild mehr als 6.1.1.
+        Ohne dieses trim lag jeder folgende Schnitt ein Bild zu spaet -- bei
+        gleicher Gesamtlaenge, weil -frames:v am Ende abschneidet.
+        """
+        for i in range(1, len(self.plan.start)):
+            laenge = self.plan.start[i] + self.plan.source[i]
+            self.assertIn(f"trim=end_frame={laenge},settb=1/25[x{i}]", self.graph)
+
+    def test_letzter_schritt_endet_auf_der_gesamtlaenge(self):
+        letzter = len(self.plan.start) - 1
+        self.assertIn(f"trim=end_frame={self.plan.total},settb=1/25[x{letzter}]", self.graph)
+
 
 class TestBuildArgs(unittest.TestCase):
     def setUp(self):

@@ -70,9 +70,12 @@ jobs:
         working-directory: worker
         run: docker build -t "moveworker:${{ steps.version.outputs.tag }}" .
 
-      - name: drawtext und Schrift sind im Image
+      - name: ffmpeg im Image
         run: |
           img="moveworker:${{ steps.version.outputs.tag }}"
+          # Die Version gehoert ins Log: xfade zaehlt in 5.1 anders als in
+          # 6.1, und das hat den Schnitt schon einmal um ein Bild verschoben.
+          docker run --rm --entrypoint ffmpeg "$img" -hide_banner -version | head -1
           docker run --rm --entrypoint ffmpeg "$img" -hide_banner -filters \
             | awk '$2=="drawtext"{gefunden=1} END{exit !gefunden}'
           docker run --rm --entrypoint sh "$img" -c 'test -f "$MOVE_FONT_FILE"'
