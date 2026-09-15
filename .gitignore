@@ -13,3 +13,6 @@ fixtures/
 .DS_Store
 # iCloud-Doppel: Repos unter ~/Documents erzeugen " 2"-Dateien, die tsc brechen
 * 2.*
+
+# tsc-Zwischenstand, kein Quellcode
+*.tsbuildinfo
