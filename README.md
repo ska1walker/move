@@ -121,6 +121,16 @@ Die drei `tsc`-Fehler sind Bestand in Marcs Repo (`invisible` an beacons
 zweitem Entrance, zweimal `appDescription` in `_lib.ts`). Der move-Eintrag
 bringt keinen einzigen neuen.
 
+**Das Skript ist der belastbare Weg, der Patch die Bequemlichkeit.** Der
+Patch ist rund 154 KB groß, und 146 KB davon sind Kontextzeilen **fremder
+Apps**: im `CHARTS`-Dict steht direkt neben unserer Einfügung `insilo` mit
+133 KB base64 auf einer einzigen Zeile. `git am` prüft diesen Kontext — wird
+eine Nachbar-App neu gepackt, schlägt der Patch fehl, obwohl unsere Änderung
+eine Zeile ist. `marktpatch.sh` sucht seine Stellen dagegen über Inhalt
+(Markerzeilen und den Dict-Kopf) und ist davon unabhängig. Bei einem
+Fehlschlag also nicht am Patch reparieren, sondern das Skript neu laufen
+lassen.
+
 Eingebaut sind drei Regeln, die je für eine echte Ablehnung stehen: nie ein
 Chart packen, das `check-chart.sh` nicht besteht; den **gepackten** Tarball
 linten, nicht den Ordner; und nur **einmal** gzippen — ein zweites Mal meldet
