@@ -76,7 +76,8 @@ export default function Seite() {
         {vorlagen.length === 0 ? (
           <p className="leise">keine</p>
         ) : (
-          <table>
+          <div className="tabelle">
+            <table>
             <thead>
               <tr>
                 <th>Name</th>
@@ -95,7 +96,8 @@ export default function Seite() {
                 </tr>
               ))}
             </tbody>
-          </table>
+            </table>
+          </div>
         )}
       </section>
 
@@ -104,7 +106,8 @@ export default function Seite() {
         {liste.length === 0 ? (
           <p className="leise">keine</p>
         ) : (
-          <table>
+          <div className="tabelle">
+            <table>
             <thead>
               <tr>
                 <th>Stand</th>
@@ -133,7 +136,8 @@ export default function Seite() {
                 </tr>
               ))}
             </tbody>
-          </table>
+            </table>
+          </div>
         )}
       </section>
 

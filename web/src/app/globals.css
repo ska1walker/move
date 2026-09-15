@@ -160,6 +160,24 @@ input[type='file'] {
   font-size: 0.9375rem;
 }
 
+/* Der Auswahlknopf eines Dateifelds kommt vom Browser und ist grau -- eine
+   dritte Farbfamilie, die der Designguide ausschliesst. Also umfaerben. */
+input[type='file']::file-selector-button {
+  margin-right: var(--am-3);
+  padding: var(--am-1) var(--am-3);
+  background: transparent;
+  color: var(--am-gold);
+  border: 1px solid var(--am-gold);
+  font: inherit;
+  font-size: 0.9375rem;
+  cursor: pointer;
+}
+
+input[type='file']::file-selector-button:hover {
+  color: var(--am-gold-hell);
+  border-color: var(--am-gold-hell);
+}
+
 /* Genau eine primaere Handlung je Ansicht: Job anlegen. */
 .primaer {
   display: inline-block;
@@ -197,8 +215,16 @@ input[type='file'] {
   cursor: not-allowed;
 }
 
+/* Auf einem schmalen Schirm passt eine Tabelle mit fuenf Spalten nicht.
+   Ohne diesen Rahmen lief sie ueber den Rand des Blocks hinaus -- gesehen
+   bei 420 px. Jetzt scrollt sie in sich, der Block bleibt ganz. */
+.tabelle {
+  overflow-x: auto;
+}
+
 table {
   width: 100%;
+  min-width: 32rem;
   border-collapse: collapse;
   font-size: 0.9375rem;
 }
