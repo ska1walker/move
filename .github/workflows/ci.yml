@@ -279,6 +279,60 @@ jobs:
             dist/markteintrag.json
           if-no-files-found: error
 
+  marktpatch:
+    name: Markt-Patch
+    # Erzeugt den fertig anwendbaren Patch fuer die AImighty Market Source.
+    # Absichtlich NICHT in den needs von publish: dieser Job klont ein
+    # fremdes, oeffentliches Repo, und dessen Erreichbarkeit soll die
+    # Veroeffentlichung der Images nicht aufhalten.
+    #
+    # Der Patch entsteht hier und nicht von Hand, weil helm in den
+    # Entwicklungsumgebungen dieses Projekts nicht verfuegbar ist -- und ein
+    # Chart, das nicht von echtem helm gepackt wurde, gehoert in keinen Markt.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.3
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: PyYAML
+        run: python3 -m pip install --quiet pyyaml
+
+      - name: paket.sh
+        run: ./scripts/paket.sh
+
+      - name: Market Source klonen und Typechecker bereitstellen
+        run: |
+          git clone --depth 1 https://github.com/bayerhazard/aimighty-market dist/markt
+          cd dist/markt
+          # Nur was der Typecheck braucht. Ein volles npm ci zieht wrangler
+          # mit, und das wird hier nicht ausgefuehrt.
+          npm install --no-save --no-audit --no-fund \
+            typescript@5.7.3 @cloudflare/workers-types@4.20250430.0
+
+      - name: marktpatch.sh
+        run: ./scripts/marktpatch.sh dist/markt
+
+      - name: Was entstanden ist
+        run: |
+          ls -la dist/*.patch
+          echo '--- Statistik ---'
+          git -C dist/markt show --stat --oneline HEAD | head -20
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: marktpatch
+          path: dist/*.patch
+          if-no-files-found: error
+
   publish:
     name: Images nach ghcr
     # Nur nach einem gruenen Lauf. Eine App, die nie gruen war, gehoert in
