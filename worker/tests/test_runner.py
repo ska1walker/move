@@ -181,6 +181,50 @@ class TestWorker(unittest.TestCase):
         # 25 Bilder bei 25 fps -> 1 Sekunde, aufgerundet.
         self.assertEqual(gefragt["sekunden"], float(-(-plan.source[0] // 25)))
 
+    def test_obergrenze_verhindert_bezahlte_aufrufe(self):
+        """fal rechnet pro Aufruf ab -- die Grenze muss VOR dem ersten greifen."""
+        gerufen = []
+
+        class GeneratorDoppel:
+            def __init__(self, cache_dir, **_):
+                pass
+
+            def erzeuge(self, anfrage):
+                gerufen.append(anfrage)
+                raise AssertionError("darf nicht gerufen werden")
+
+        job_id = self.repo.enqueue(
+            self.template_id,
+            [
+                Clip(index=0, source="fal", prompt="a"),
+                Clip(index=1, source="fal", prompt="b"),
+            ],
+        )
+        with mock.patch.dict(os.environ, {"MOVE_FAL_MAX_CLIPS": "1"}):
+            with mock.patch("move_worker.runner.Generator", GeneratorDoppel):
+                self.assertTrue(self.worker.run_once())
+
+        job = self.repo.get_job(job_id)
+        self.assertEqual(job.status, STATUS_FAILED)
+        self.assertIn("MOVE_FAL_MAX_CLIPS", job.error)
+        self.assertEqual(gerufen, [], "es wurde trotz Grenze generiert")
+
+    def test_grenze_null_schaltet_generierung_ab(self):
+        job_id = self.repo.enqueue(
+            self.template_id,
+            [Clip(index=0, source="fal", prompt="a"), Clip(index=1)],
+        )
+        with mock.patch.dict(os.environ, {"MOVE_FAL_MAX_CLIPS": "0"}):
+            self.assertTrue(self.worker.run_once())
+        self.assertEqual(self.repo.get_job(job_id).status, STATUS_FAILED)
+
+    def test_tippfehler_in_der_grenze_bedeutet_nicht_offen(self):
+        from move_worker.runner import max_fal_clips
+
+        with mock.patch.dict(os.environ, {"MOVE_FAL_MAX_CLIPS": "viele"}):
+            with self.assertRaises(ValueError):
+                max_fal_clips()
+
     def test_prompt_ueberlebt_den_umlauf_durch_die_datenbank(self):
         job_id = self.repo.enqueue(
             self.template_id,

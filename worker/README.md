@@ -306,6 +306,26 @@ ganzzahlige Laengen, und ein zu kurzer Clip ist teuer -- der Assembler lehnt
 ihn dann ab (`check_clips`, mit Zahlen), und die Generierung waere bezahlt und
 unbrauchbar.
 
+### Obergrenze, weil jeder Aufruf Geld kostet
+
+fal ist eine Entwicklerplattform: Abrechnung pro Aufruf, keine
+Endnutzerkonten. Ein Template mit acht Einstellungen ist damit ein Job mit
+acht Rechnungspositionen.
+
+`MOVE_FAL_MAX_CLIPS` begrenzt, wie viele Clips ein Job erzeugen darf --
+Vorgabe 12. Geprueft wird **bevor der erste Aufruf laeuft**, nicht danach.
+`0` schaltet die Generierung ganz ab, brauchbar fuer eine Installation, die
+nur Platzhalter und Uploads zulassen soll. Ein Tippfehler in der Variablen
+faellt nicht auf die Vorgabe zurueck, sondern scheitert -- eine offene Grenze
+durch einen Vertipper waere teuer.
+
+Das zaehlt fuer v0 wenig: du bist Betreiber und einziger Nutzer, dein
+Schluessel, deine Rechnung. Fuer eine Kundenversion zaehlt es sehr: der Kunde
+hat kein fal-Konto, der Schluessel bleibt der des Betreibers, und jede
+Generierung landet auf dessen Abrechnung. Das ist genau das Credit-System,
+das CLAUDE.md fuer v0 ausschliesst -- mit fal im Produkt wird aus dem
+Aufschub ein Loch.
+
 ### Was hier nicht geprueft ist
 
 Der Netzaufruf selbst. fal ist gesperrt und ein Schluessel liegt hier nicht.

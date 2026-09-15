@@ -29,6 +29,10 @@ LOG = logging.getLogger(__name__)
 DEFAULT_DATA_DIR = "/app/data"
 DEFAULT_POLL_INTERVAL_MS = 2000
 
+# Hoechstzahl bezahlter fal-Aufrufe je Job. Grosszuegig ueber dem
+# Beispiel-Template mit acht Einstellungen, aber nicht offen.
+DEFAULT_MAX_FAL_CLIPS = 12
+
 
 def data_dir() -> Path:
     """Das Datenverzeichnis IM Container.
@@ -41,6 +45,25 @@ def data_dir() -> Path:
 
 def db_path() -> Path:
     return data_dir() / "db" / "move.sqlite3"
+
+
+def max_fal_clips() -> int:
+    """Obergrenze fuer bezahlte Generierungen je Job.
+
+    0 oder negativ schaltet die Generierung ganz ab -- brauchbar fuer eine
+    Installation, die nur Platzhalter und Uploads zulassen soll.
+    """
+    roh = os.environ.get("MOVE_FAL_MAX_CLIPS", "").strip()
+    if roh == "":
+        return DEFAULT_MAX_FAL_CLIPS
+    try:
+        return int(roh)
+    except ValueError as exc:
+        # Nicht still auf die Vorgabe zurueckfallen: ein Tippfehler in der
+        # Umgebung darf keine offene Grenze bedeuten.
+        raise ValueError(
+            f'MOVE_FAL_MAX_CLIPS="{roh}" ist keine ganze Zahl'
+        ) from exc
 
 
 @dataclass
@@ -145,6 +168,22 @@ class Worker:
             raise ValueError(
                 f"Clips mit einem Index ausserhalb des Templates ({anzahl} "
                 f"Einstellungen): {ueberzaehlig}"
+            )
+
+        # Obergrenze fuer bezahlte Aufrufe, BEVOR der erste laeuft.
+        #
+        # fal ist eine Entwicklerplattform und rechnet pro Aufruf ab. Ein
+        # Template mit vielen Einstellungen ist damit ein Job mit vielen
+        # Rechnungspositionen -- und in einer Kundenversion loest das ein
+        # Fremder aus, waehrend der Schluessel dem Betreiber gehoert.
+        # Lieber hier scheitern als hinterher zahlen.
+        zu_erzeugen = sum(1 for c in nach_index.values() if c.source == "fal")
+        grenze = max_fal_clips()
+        if zu_erzeugen > grenze:
+            raise ValueError(
+                f"Der Job wuerde {zu_erzeugen} Clips bei fal erzeugen, erlaubt sind "
+                f"{grenze}. Jeder Aufruf wird abgerechnet. Grenze ueber "
+                f"MOVE_FAL_MAX_CLIPS anheben, wenn das so gewollt ist."
             )
 
         plan = FramePlan.build(template, self.settings.fps)
