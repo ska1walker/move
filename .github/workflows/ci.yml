@@ -337,11 +337,19 @@ jobs:
         # Manifeste und die Templates. In values.yaml darf per Projektregel
         # nie ein Schluessel stehen, und der FAL_KEY kommt erst zur
         # Installationszeit aus der Nutzereingabe.
+        # Das base64 kommt UMBROCHEN und mit Pruefsumme. Eine einzelne Zeile
+        # von 8,4 kB uebersteht den Weg durch die Log-API nicht: gemessen
+        # kamen genau 8444 Zeichen an, aber das Entpacken brach mit CRC-Fehler
+        # ab -- also war ein Zeichen verfaelscht, ohne dass die Laenge es
+        # verriet. Wer das wieder zu einer Zeile macht, prueft danach die
+        # Summe.
         run: |
           echo '===== _apps.ts: Block ====='
           cat dist/_apps-eintrag.ts
-          echo '===== _lib.ts: eine Zeile fuer das CHARTS-Dict ====='
-          cat dist/_lib-eintrag.txt
+          echo '===== sha256 des Tarballs ====='
+          sha256sum "dist/move-$(grep -E '^version:' move/Chart.yaml | awk '{print $2}').tgz"
+          echo '===== base64, umbrochen bei 100 Zeichen ====='
+          fold -w 100 "dist/move-$(grep -E '^version:' move/Chart.yaml | awk '{print $2}').tgz.base64"
           echo '===== Ende ====='
 
       - uses: actions/upload-artifact@v4
