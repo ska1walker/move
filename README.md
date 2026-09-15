@@ -4,9 +4,10 @@ KI-Video-Plattform mit vorgefertigten cinematischen Presets und gelernten
 Schnitt-Templates. Native Olares-App, ausgeliefert über eine eigene Market
 Source.
 
-Das **Chart-Gerüst steht**, Code gibt es noch keinen. Die Images existieren
-nicht, die App ist also noch nicht installierbar — das Chart ist das Skelett,
-in das Frontend und Worker hineinwachsen.
+Stand: **Chart-Gerüst und Assembler stehen.** Die Pipeline läuft von einem
+handgeschriebenen `CutTemplate` bis zum fertigen MP4, ohne einen einzigen
+KI-Aufruf. Es gibt noch kein Frontend, keine Job-Tabelle und keine Images —
+die App ist also noch nicht installierbar.
 
 ## Was drin ist
 
@@ -22,6 +23,7 @@ move/OlaresManifest.yaml       Chart-Manifest, byteweise identisch zum Root
 move/values.yaml               keine Pins, keine Secrets
 move/values-olares-stub.yaml   Stub für helm lint/template
 move/templates/                zwei Deployments, ein Service
+worker/                        Assembler und Platzhalter, siehe worker/README.md
 .gitignore
 ```
 
@@ -67,7 +69,17 @@ Generator auf, überspringt den Guard aber sauber, solange er fehlt.
    also genau die Prüfungen, die Struktur und Budget betreffen. Vor einem
    Release muss er dort laufen, wo beide Werkzeuge liegen.
 
-3. Assembler bauen: handgeschriebenes `CutTemplate` + Platzhalter-Clips -> MP4.
+3. Assembler: steht. `worker/README.md`, dann
+
+   ```bash
+   cd worker && python3 -m move_worker demo \
+     --template examples/beat-8s.json --out-dir /tmp/move
+   ```
+
+4. Worker-Image bauen. Es muss ffmpeg **mit `drawtext`** und eine
+   Schriftdatei mitbringen, sonst gibt es keine Platzhalter.
+
+5. Upload-Pfad mit allen vier Fallstricken, gegen eine 400-MB-Datei gemessen.
 
 ## Reihenfolge, die nicht verhandelbar ist
 
