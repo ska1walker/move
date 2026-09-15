@@ -1,0 +1,194 @@
+# marktpr.yml — move in die AImighty Market Source eintragen und dort einen
+# Pull Request oeffnen.
+#
+# NUR AUF KNOPFDRUCK. Kein Push-Trigger, kein Zeitplan: dieser Workflow
+# schreibt in ein FREMDES Repo. Das soll ein bewusster Klick sein, keine
+# Nebenwirkung eines Commits.
+#
+# Was er tut:
+#   1. Chart mit echtem helm packen (scripts/paket.sh)
+#   2. Eintrag in eine frische Kopie der Market Source setzen
+#      (scripts/marktpatch.sh -- typecheckt dort gegen die Grundlinie)
+#   3. Branch pushen und einen Pull Request oeffnen
+#
+# Was er NICHT tut: auf main pushen, mergen, deployen. Das Deploy
+# (wrangler pages deploy) bleibt bei dem, dem das Cloudflare-Konto gehoert --
+# ein Commit ohne Deploy aendert am Katalog nichts, aber ein Deploy aendert,
+# was jede synchronisierende Box sieht.
+#
+# WARUM DIESER WEG UND NICHT EIN SCHLUESSEL IM CHAT:
+# Ein Token, das durch eine Unterhaltung geht, steht danach in einem
+# Verlauf und ist zu erneuern. Als Actions-Secret ist es verschluesselt
+# gespeichert, wird im Log maskiert und laesst sich zurueckziehen, ohne dass
+# irgendwo eine Kopie liegen bleibt. Ausserdem entsteht das Chart hier im
+# SELBEN Lauf, in dem der Eintrag geschrieben wird -- das muss so sein, denn
+# helm package ist ueber Laeufe hinweg nicht bitgleich (die Dateizeiten
+# kommen aus dem Checkout).
+#
+# EINRICHTUNG, einmalig:
+#   Settings -> Secrets and variables -> Actions -> New repository secret
+#     Name:  MARKT_TOKEN
+#     Wert:  ein FEINGRANULARES Token, nur fuer bayerhazard/aimighty-market,
+#            mit Contents: Read and write und Pull requests: Read and write.
+#            Kein klassisches PAT mit Zugriff auf alles.
+#   Der Besitzer des Markt-Repos muss den Zugriff gewaehrt haben.
+
+name: marktpr
+
+on:
+  workflow_dispatch:
+    inputs:
+      trockenlauf:
+        description: 'Nur vorbereiten, nicht pushen und keinen PR oeffnen'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  marktpr:
+    name: Pull Request in der Market Source
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.3
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Secret vorhanden?
+        if: ${{ inputs.trockenlauf == false }}
+        env:
+          MARKT_TOKEN: ${{ secrets.MARKT_TOKEN }}
+        run: |
+          if [ -z "$MARKT_TOKEN" ]; then
+            echo "Das Secret MARKT_TOKEN fehlt. Einrichtung steht im Kopf dieser Datei."
+            echo "Ohne Secret laeuft nur der Trockenlauf."
+            exit 1
+          fi
+          echo "MARKT_TOKEN ist gesetzt."
+
+      - name: PyYAML
+        run: python3 -m pip install --quiet pyyaml
+
+      - name: Chart packen
+        run: ./scripts/paket.sh
+
+      - name: Market Source holen
+        env:
+          # gh auth setup-git richtet den Credential-Helper ein. Damit steht
+          # das Token NICHT in einer Remote-URL und landet nicht im Log.
+          GH_TOKEN: ${{ secrets.MARKT_TOKEN || github.token }}
+        run: |
+          git clone --depth 1 https://github.com/bayerhazard/aimighty-market dist/markt
+          cd dist/markt
+          npm install --no-save --no-audit --no-fund \
+            typescript@5.7.3 @cloudflare/workers-types@4.20250430.0
+
+      - name: Eintrag setzen und typechecken
+        run: ./scripts/marktpatch.sh dist/markt
+
+      - name: Was entstanden ist
+        run: git -C dist/markt show --stat --oneline HEAD | head -20
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: marktpatch
+          path: dist/*.patch
+          if-no-files-found: error
+
+      - name: Branch pushen und Pull Request oeffnen
+        if: ${{ inputs.trockenlauf == false }}
+        env:
+          GH_TOKEN: ${{ secrets.MARKT_TOKEN }}
+        run: |
+          version="$(grep -E '^version:' move/Chart.yaml | awk '{print $2}')"
+          branch="move-$version"
+
+          gh auth setup-git
+          git -C dist/markt push -u origin "$branch"
+
+          # Schon offen? Dann hat der Push gereicht, ein zweiter PR waere
+          # Rauschen.
+          offen="$(gh pr list --repo bayerhazard/aimighty-market \
+                     --head "$branch" --state open --json number --jq 'length')"
+          if [ "$offen" != "0" ]; then
+            echo "Es gibt bereits einen offenen PR fuer $branch. Der Push hat ihn aktualisiert."
+            exit 0
+          fi
+
+          cat > /tmp/pr.md <<'TEXT'
+          Neue App: `move`, Kategorie Utilities, ein Entrance auf Port 3000.
+
+          Schnitt-Templates als Zeitstempel. Ein Template ist kein Modell,
+          sondern eine Liste von Zeitpunkten; angewendet wird deterministisch
+          mit ffmpeg. Die Pipeline laeuft ohne einen einzigen Modellaufruf
+          durch.
+
+          ## Was sich aendert
+
+          Zwei Dateien, mehr braucht es nicht:
+
+          | Datei | Aenderung |
+          |---|---|
+          | `functions/_apps.ts` | App-Eintrag, zwischen zwei Markerzeilen |
+          | `functions/_lib.ts` | eine Zeile im `CHARTS`-Dict |
+
+          Nachgesehen in `functions/api/v1/applications/[app]/chart.ts`: der
+          Endpunkt liest allein aus dem `CHARTS`-Dict. Der `charts/`-Ordner
+          wird nicht angefasst.
+
+          ## Wie der Eintrag entstanden ist
+
+          Erzeugt aus dem `OlaresManifest.yaml` der App, nicht abgeschrieben.
+          Die Markerzeilen sagen das, weil `_apps.ts` in Zeile 1
+          `// Generated by gen_market.py` traegt: **der Block gehoert
+          mittelfristig in diesen Generator**, nicht in Handpflege.
+
+          Chart und Eintrag stammen aus demselben CI-Lauf. Das ist
+          notwendig, nicht Zufall: `helm package` ist ueber Laeufe hinweg
+          nicht bitgleich, weil die Dateizeiten aus dem Checkout kommen.
+
+          ## Gepruefte Punkte
+
+          - `tsc` gegen die Grundlinie dieses Repos: gleiche Fehlerzahl vorher
+            und nachher, der Eintrag bringt keinen neuen.
+          - `check-chart.sh` besteht, bevor ueberhaupt gepackt wird.
+          - Der gepackte Tarball wird auf Inhalt geprueft; das base64 wird
+            zurueckdekodiert und byteweise gegen den Tarball verglichen.
+          - Nur einmal gzippt (sonst meldet die Box `invalid tar header`).
+
+          ## Danach noch zu tun
+
+          Nach dem Merge **deployen** (`wrangler pages deploy functions/`) --
+          ein Commit ohne Deploy aendert am Katalog nichts. Dann den Sync
+          abwarten.
+
+          Drei `envs` fragt die App bei der Installation ab, alle optional:
+          `FAL_KEY` (password), `MOVE_FAL_MODEL`, `MOVE_FAL_MAX_CLIPS` (int,
+          Vorgabe 12). Ohne Schluessel laeuft sie mit Platzhaltern und eigenen
+          Uploads.
+
+          ---
+          _Erzeugt von [Claude Code](https://claude.com/claude-code)_
+          TEXT
+
+          gh pr create --repo bayerhazard/aimighty-market \
+            --head "$branch" \
+            --title "move $version in den Katalog" \
+            --body-file /tmp/pr.md
+
+      - name: Trockenlauf-Hinweis
+        if: ${{ inputs.trockenlauf == true }}
+        run: |
+          echo "Trockenlauf: nichts gepusht, kein PR."
+          echo "Der Patch haengt als Artefakt 'marktpatch' an diesem Lauf."
+          echo "Fuer den echten Lauf den Haken bei 'Nur vorbereiten' ENTFERNEN"
+          echo "und vorher das Secret MARKT_TOKEN setzen."
