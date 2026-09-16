@@ -3,20 +3,22 @@
 Der letzte Schritt, und der einzige, den kein Automat übernehmen kann: die
 Box steht im lokalen Netz, die Anmeldung braucht Browser und TOTP.
 
-**Zielversion ist `26.9.2`.** Alles davor ist erledigt und live gemessen:
+**Zielversion ist `26.9.3`.** Sie behebt den Fehlschlag, den 26.9.2 auf der
+Box zeigte:
 
-| | |
-|---|---|
-| Images auf ghcr | `move:26.9.2` und `moveworker:26.9.2`, anonym HTTP 200 |
-| Katalog | listet `move 26.9.2` unter 22 Apps |
-| Chart | HTTP 200, 8085 Byte, entpackt in einem Schritt, `envs`-Block drin |
-| Hash | `abbe5337…` (vorher `666445a6…`), also synchronisieren die Boxen |
+> Incompatible with this Olares version
+
+Die Meldung zeigt auf die Version und meinte ein fehlendes Feld: der
+olares-Abhängigkeit fehlte `type: system`. Der Pin `>=1.12.6-0` war richtig,
+alle Namen waren richtig, `chart lint` sagte nichts. Belegt am Katalog: 21 von
+21 installierenden Charts dort tragen das Feld, die einzigen beiden ohne waren
+move 26.9.1 und 26.9.2. `check-chart.sh` prüft es jetzt.
 
 Damit ist dieses Dokument der einzige noch offene Schritt.
 
 ## 1. Ist move angekommen
 
-Der Katalog steht auf 26.9.2, der Hash hat sich bewegt — die Boxen
+Der Katalog steht auf 26.9.3, der Hash hat sich bewegt — die Boxen
 synchronisieren also. Olares pollt alle fünf Minuten.
 
 ```bash
@@ -24,11 +26,13 @@ olares-cli market get move -s market.AImighty
 ```
 
 Zeigt das nichts, ist der Sync noch nicht durch — abwarten, nicht nachhelfen.
-Zeigt es **26.9.1**, ist es der alte Stand: dieses Chart rendert den Worker
-ohne `apiVersion` und lässt sich nicht installieren. Dann nicht installieren,
-sondern weiter warten oder die Market Source einmal entfernen und neu
-hinzufügen (nach `docs/olares-learnings.md` 9.3 der einzige dauerhafte Fix,
-wenn `raw_data` klemmt; der Sync-Knopf leert den Cache nicht).
+
+Zeigt es **26.9.1 oder 26.9.2**, ist es ein alter Stand, und keiner der beiden
+installiert: 26.9.1 rendert den Worker ohne `apiVersion`, 26.9.2 scheitert an
+der fehlenden `type: system`. Dann **nicht** installieren, sondern warten oder
+die Market Source einmal entfernen, fünf Sekunden warten und neu hinzufügen
+(nach `docs/olares-learnings.md` 9.3 der einzige dauerhafte Fix, wenn
+`raw_data` klemmt; der Sync-Knopf leert den Cache nicht).
 
 ## 2. Installieren
 
@@ -58,7 +62,7 @@ kubectl get pods -n move-<nutzer> \
 ```
 
 Erwartet: zwei Pods, `move` und `moveworker`, beide `true`, beide auf
-`ghcr.io/ska1walker/…:26.9.2`. Steht dort `26.9.1`, hat die Box noch den alten
+`ghcr.io/ska1walker/…:26.9.3`. Steht dort `26.9.1`, hat die Box noch den alten
 Katalogstand synchronisiert — zurück zu Schritt 1, nicht weitermachen.
 
 Die Adresse ist `https://3734a903<index>.<nutzer>.<zone>` — `3734a903` ist
@@ -105,6 +109,8 @@ Vier Dinge stehen im Repo als unverifiziert und entscheiden sich hier:
 | 401 `ext_authz_denied` | ein Aufruf auf die eigene Entrance-Adresse aus dem Pod. Die Server-Komponente liest direkt aus `lib/daten.ts`, genau deshalb |
 | Pods laufen, aber mit altem Image | Werte-Einfrieren beim Upgrade. Bei einer Erstinstallation ausgeschlossen |
 | `downloadFailed` ohne Retry | Grund steht in `kubectl logs -n os-framework app-service-0` |
+| „Incompatible with this Olares version" | **Nicht die Version.** Der olares-Abhängigkeit fehlt `type: system` (in 26.9.2 gemessen). Seit 26.9.3 gesetzt, `check-chart.sh` prüft es. Tritt es trotzdem auf: die Box holt noch einen alten Katalogstand — Schritt 1 |
+| „Incompatible with your Olares" (ohne „version") | Andere Ursache: `entrances[].name`/`host` ≠ `metadata.name` ≠ Service ≠ Frontend-Deployment. Bei move sind alle fünf `move`, geprüft |
 
 Zwei Befehle aus `docs/olares-learnings.md` 10, die move konkret braucht.
 

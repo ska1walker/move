@@ -21,7 +21,7 @@ scripts/check-chart.sh         Vorab-Guards, aus dem Insilo-Original umgebaut
 scripts/make-icon.py           erzeugt icon.png reproduzierbar, ohne Bildbibliothek
 icon.png                       512x512, Hanseatenblau + Gold
 OlaresManifest.yaml            Root-Manifest (Store)
-move/Chart.yaml                Version 26.9.2
+move/Chart.yaml                Version 26.9.3
 move/OlaresManifest.yaml       Chart-Manifest, byteweise identisch zum Root
 move/values.yaml               keine Pins, keine Secrets
 move/values-olares-stub.yaml   Stub für helm lint/template
@@ -43,8 +43,8 @@ Beide Images bauen mit dem **Repo-Wurzelverzeichnis** als Kontext, weil
 `db/schema.sql` von Web und Worker gemeinsam gelesen wird:
 
 ```bash
-docker build -f worker/Dockerfile -t moveworker:26.9.2 .
-docker build -f web/Dockerfile    -t move:26.9.2 .
+docker build -f worker/Dockerfile -t moveworker:26.9.3 .
+docker build -f web/Dockerfile    -t move:26.9.3 .
 ```
 
 Chart-Stand: ein Entrance auf `move` (Port 3000), Worker `moveworker` ohne
@@ -63,20 +63,14 @@ Erledigt und gemessen: Repo öffentlich (Icon HTTP 200), beide ghcr-Pakete
 anonym abrufbar, `docs/olares-learnings.md` und `docs/design-guide.md` liegen
 vor.
 
-### Der Katalog steht auf 26.9.2 — und warum es 26.9.2 gab
+### Drei Versionen, zwei Fehlschläge, drei Guards
 
-**Erledigt:** Images `26.9.2` auf ghcr (anonym HTTP 200), Katalogeintrag live
-(PR #72 gemergt), Chart abrufbar (HTTP 200, 8085 Byte, entpackt in einem
-Schritt, `envs`-Block drin), Hash bewegt auf `abbe5337…` von `666445a6…`.
-Ohne Hash-Änderung synchronisiert keine Box.
+Zwei Dinge haben verhindert, dass move auf einer Box läuft. Beide waren
+gültiges YAML, beide kamen durch `chart lint`, beide standen im Katalog.
 
-**Offen:** `running` auf der Box. Der Katalog läuft der Messung hier voraus,
-und das widerspricht der Reihenfolge in CLAUDE.md. Grund war der Vorgänger:
-
-Das Chart, das vorher im Katalog lag, **ließ sich nicht installieren**.
-Nachgemessen, nicht vermutet: `git archive 9268b3b` (der Stand, aus dem das
-ausgelieferte 26.9.1 entstand) mit echtem helm gerendert ergibt drei
-Dokumente, und das dritte ist
+**26.9.1 — der Worker rendert ohne `apiVersion`.** Nachgemessen:
+`git archive 9268b3b` (der Stand, aus dem das ausgelieferte Paket entstand)
+mit echtem helm gerendert ergibt drei Dokumente, und das dritte ist
 
 ```
 apiVersion=None    kind=Deployment    name=moveworker
@@ -84,33 +78,47 @@ apiVersion=None    kind=Deployment    name=moveworker
 
 Eine rechte Trimm-Marke (`-}}`) an einer Zuweisung fraß den Zeilenumbruch
 danach, und `apiVersion: apps/v1` klebte an das Ende der Kommentarzeile
-darüber. Gültiges YAML, deshalb hat niemand gemeckert — helm nicht, `chart
-lint` nicht, der Katalog nicht. Die API hätte es abgelehnt.
+darüber. Niemand hat gemeckert — helm nicht, `chart lint` nicht, der Katalog
+nicht. Die API hätte es abgelehnt.
 
-**26.9.2 behebt genau das.** Stand der drei Teile, getrennt gemeldet:
+**26.9.2 — „Incompatible with this Olares version".** Auf der Box gemessen,
+beim ersten echten Installationsversuch. Die Meldung zeigt auf die Version und
+meint ein fehlendes Feld: der olares-Abhängigkeit fehlte `type: system`. Der
+Pin `>=1.12.6-0` war richtig, alle fünf Namen waren `move`, `chart lint` sagte
+nichts.
+
+Belegt am Katalog statt geraten: von den **21** Charts in Marcs Market Source,
+die installieren, tragen **21** `type: system` — insilo, beacon, relay,
+aimragflow und alle übrigen. Die einzigen beiden ohne waren `move-26.9.1` und
+`move-26.9.2`. Weder CLAUDE.md noch `docs/olares-learnings.md` nannten das
+Feld; beide zeigten die Abhängigkeit nur mit `name` und `version`. Beide sind
+jetzt korrigiert.
+
+**Stand, getrennt gemeldet — nicht zusammengefasst:**
 
 | | Stand |
 |---|---|
-| Chart 26.9.2 | gepackt; `helm template` rendert 3 Dokumente, `apiVersion` 3 == `kind` 3 |
-| Images `26.9.2` auf ghcr | da, anonym HTTP 200, `move` = `sha256:03b3cd4b…` |
-| Katalogeintrag | 26.9.2, live gemessen |
+| Chart 26.9.3 | gepackt (8537 Byte); `type: system` im Paket, Render 3 Dokumente, alle mit `apiVersion` und `kind` |
+| Images `26.9.3` auf ghcr | **fehlen noch** — der Push läuft nur auf einem `v*`-Tag oder per Klick |
+| Katalogeintrag | steht auf **26.9.2**, also auf dem Chart, das die Box ablehnt |
 | `running` auf der Box | **nicht gemessen** |
 
-Die letzte Zeile ist die Abweichung, und sie bleibt eine. CLAUDE.md sagt:
-Images bauen → installieren und `running` **messen** → erst dann der Katalog.
-Hier lief der Katalog vor, weil der gelistete Vorgänger nicht installierbar
-war; 26.9.2 ist in jedem Zustand besser als das. Die Messung ist damit
-nachzuholen, nicht erledigt — Ablauf in `docs/installieren.md`.
+Drei Guards sind daraus entstanden, jeder dort, wo der Fehler durchkam:
 
-Zwei Guards sind daraus entstanden, beide dort, wo der Fehler durchkam:
-
+- `check-chart.sh` verlangt `type: system` an der olares-Abhängigkeit. Er liest
+  dabei nur den Block dieser einen Abhängigkeit — die erste Fassung lief in den
+  `envs:`-Block weiter und meldete das `type: password` von `FAL_KEY` als Typ
+  der Abhängigkeit.
 - `marktpr.yml` prüft **vor** dem Push, dass die Image-Tags existieren und
   anonym ziehbar sind, und bricht sonst ab, bevor etwas gelistet wird.
-- `marktpruefen.yml` **rendert das ausgelieferte Chart** und zählt
-  `apiVersion` und `kind` je Dokument. Entpacken und `grep` allein haben
-  26.9.1 durchgelassen: gültiges YAML, richtige Version, `envs`-Block
-  vorhanden — und trotzdem nicht installierbar. Geprüft wird jetzt, was der
-  Katalog herausgibt, nicht was im Repo steht.
+- `marktpruefen.yml` **rendert das ausgelieferte Chart** und zählt `apiVersion`
+  und `kind` je Dokument. Entpacken und `grep` allein haben 26.9.1
+  durchgelassen. Geprüft wird jetzt, was der Katalog herausgibt, nicht was im
+  Repo steht.
+
+Die Reihenfolge aus CLAUDE.md gilt weiter und wurde bei 26.9.2 verletzt: Images
+bauen → installieren und `running` **messen** → erst dann der Katalog. Bei
+26.9.3 wird sie eingehalten.
 
 ## Wie eine App auf die Box kommt — drei Wege
 
@@ -145,8 +153,9 @@ gemeldet; auf Kais Box lief einmal 0.9.6, während der Markt 0.9.9 trug.
 ## Warum es bei insilo und beacon geht
 
 Beide nehmen denselben Weg wie move, nicht einen anderen:
-`insilo-0.1.98.tgz` steht in Marcs `_lib.ts`, beacon ist dort als `0.1.4`
-eingetragen. Was sie anders machen:
+`insilo-0.1.101.tgz` steht in Marcs `_lib.ts`, beacon dort als `0.11.0`
+(nachgesehen, nicht erinnert — die Zahlen hier waren mit 0.1.98 und 0.1.4
+veraltet). Was sie anders machen:
 
 1. **Beide Repos sind öffentlich.** insilos Icon zeigt auf
    `raw.githubusercontent.com/ska1walker/insilo/main/icon.png` — dieselbe Form
@@ -221,7 +230,7 @@ Weil eine App nicht dadurch in den Marktplatz kommt, dass sie hier im Repo
 liegt. Eine **Market Source ist ein eigener Webdienst** (bei AImighty:
 Cloudflare Pages, Repo `bayerhazard/aimighty-market`). Sie listet die App
 unter `/api/v1/appstore/info` und liefert das Chart unter
-`/api/v1/applications/move/chart?fileName=move-26.9.2.tgz`. Das Chart steckt
+`/api/v1/applications/move/chart?fileName=move-26.9.3.tgz`. Das Chart steckt
 dort als base64 in einer Tabelle. In **move ist noch nichts davon eingetragen** —
 dieses Repo enthält nur das Chart selbst.
 
@@ -233,8 +242,8 @@ dieses Repo enthält nur das Chart selbst.
 
 | Datei | wohin |
 |---|---|
-| `dist/move-26.9.2.tgz` | das gepackte Chart |
-| `dist/move-26.9.2.tgz.base64` | eine Zeile, als Wert unter dem Schlüssel `"move-26.9.2.tgz"` |
+| `dist/move-26.9.3.tgz` | das gepackte Chart |
+| `dist/move-26.9.3.tgz.base64` | eine Zeile, als Wert unter dem Schlüssel `"move-26.9.3.tgz"` |
 | `dist/markteintrag.json` | die Metadatenfelder, aus dem Manifest gelesen |
 
 Der CI-Job **Chart-Paket** führt das bei jedem Push mit echtem Helm aus und

@@ -215,7 +215,22 @@ options:
   dependencies:
     - name: olares
       version: '>=1.12.6-0'    # unter v3 exakt so
+      type: system             # PFLICHT, sonst "Incompatible with this
+                               # Olares version" — s. u.
 ```
+
+**`type: system` an der olares-Abhängigkeit ist Pflicht.** Fehlt es, lehnt die
+Box die Installation ab mit *„Incompatible with this Olares version"* — obwohl
+der Pin stimmt, obwohl alle Namen stimmen und obwohl `chart lint` nichts sagt.
+Die Meldung zeigt auf die Version und meint das fehlende Feld; wer ihr glaubt,
+sucht an der falschen Stelle.
+
+Belegt am Katalog, nicht vermutet: von den 21 Charts in Marcs Market Source,
+die installieren, tragen **21** `type: system` (insilo, beacon, relay,
+aimragflow und alle übrigen). Die einzigen beiden ohne waren `move-26.9.1`
+und `move-26.9.2`. Weder dieses Dokument noch `docs/olares-learnings.md`
+nannten das Feld — beide zeigten die Abhängigkeit nur mit `name` und
+`version`. `check-chart.sh` prüft es jetzt.
 
 - Pflichtfelder: `name`, `appid`, `title`, `version`, `icon`, `requiredDisk`,
   `supportArch`. `chart lint` verlangt kein `appid`, `market upload` lehnt

@@ -274,6 +274,42 @@ for mf in "$MANIFEST_FILE" "$ROOT_MANIFEST_FILE"; do
   else
     fail "$mf: olares-Dependency '$DEP_VERSION' ohne obere Grenze — Upload wird 400 liefern"
   fi
+
+  # type: system an derselben Abhaengigkeit.
+  #
+  # AUS EINEM ECHTEN FEHLSCHLAG. Ohne dieses Feld lehnt die Box die
+  # Installation ab: "Incompatible with this Olares version" -- und zwar
+  # obwohl der Pin oben stimmt, obwohl alle Namen stimmen und obwohl
+  # `chart lint` nichts sagt. Die Meldung zeigt auf die Version und meint
+  # das fehlende Feld; danach sucht man an der falschen Stelle.
+  #
+  # Weder CLAUDE.md noch docs/olares-learnings.md nennen es. Belegt am
+  # Katalog: 21 von 21 installierenden Charts in Marcs Market Source tragen
+  # `type: system`, die einzigen beiden ohne waren move-26.9.1 und
+  # move-26.9.2.
+  #
+  # Gelesen wird NUR der Block dieser einen Abhaengigkeit: ab der
+  # olares-Zeile bis zum naechsten Listeneintrag ODER zum naechsten
+  # Schluessel der obersten Ebene.
+  #
+  # Die zweite Abbruchbedingung ist nicht Vorsicht, sondern ein gemessener
+  # Fehler in der ersten Fassung dieses Guards: er brach nur bei `- name:`
+  # ab, der envs:-Block darunter benutzt aber `- envName:`. Also lief das
+  # awk weiter und meldete das `type: password` von FAL_KEY als Typ der
+  # Abhaengigkeit. Ein Guard, der irgendwo sonst in der Datei ein
+  # `type: system` findet, wuerde gruen melden, obwohl die Abhaengigkeit
+  # keines hat -- genau der Fehler, den er finden soll.
+  DEP_TYPE="$(awk '
+    /^[[:space:]]*-[[:space:]]*name:[[:space:]]*olares[[:space:]]*$/ { f=1; next }
+    f && /^[^[:space:]]/ { exit }
+    f && /^[[:space:]]*-/ { exit }
+    f && /^[[:space:]]*type:/ { gsub(/.*type:[[:space:]]*/,""); gsub(/['"'"'"]/,""); print; exit }
+  ' "$mf")"
+  if [[ "$DEP_TYPE" == "system" ]]; then
+    ok "$mf: olares-Dependency traegt type: system"
+  else
+    fail "$mf: olares-Dependency ohne 'type: system' (gefunden: '${DEP_TYPE:-nichts}') — die Box meldet 'Incompatible with this Olares version'"
+  fi
 done
 
 # ---------------------------------------------------------------------------
