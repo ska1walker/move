@@ -91,7 +91,7 @@ GPU-Zeit und Trainingsdaten.
 | | Woher |
 |---|---|
 | erster echter fal-Aufruf | Die Generierung ist gebaut und gegen ein Doppel getestet, aber nie gegen fal gelaufen. fal.ai und docs.fal.ai sind vom Proxy gesperrt. **Konkret unbelegt: die Argumentnamen** `image_url` und `seed` — begründete Annahme, kein gemessenes Schema. Passen sie nicht, scheitert der Job mit der vollständigen Antwort in `render_job.error`, und `MOVE_FAL_BILD_ARGUMENT` bzw. `MOVE_FAL_SEED_ARGUMENT` korrigieren es ohne neues Image. |
-| `running` auf der Box für 26.9.4 | 26.9.3 läuft dort. Ablauf in `docs/installieren.md`. |
+| `running` auf der Box für 26.9.4 | **26.9.3 läuft dort.** Katalog, Chart und Images tragen 26.9.4, alles live gemessen (Chart HTTP 200/8987 Byte, `type: system`, Render 3 Dokumente, beide Images anonym 200, Hash `e382ed14…`). Auf der Box passiert davon nichts von selbst: nach §9.2 drückt ein Mensch „Upgrade". Bis dahin läuft dort 26.9.3 weiter — also ohne Upload, Extraktion und Figuren. |
 
 Erledigt und gemessen: Repo öffentlich (Icon HTTP 200), beide ghcr-Pakete
 anonym abrufbar, `docs/olares-learnings.md` und `docs/design-guide.md` liegen
