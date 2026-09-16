@@ -16,31 +16,75 @@ move 26.9.1 und 26.9.2. `check-chart.sh` prüft es jetzt.
 
 Damit ist dieses Dokument der einzige noch offene Schritt.
 
-## 1. Ist move angekommen
+## 1. Welcher Weg — das entscheidet der Katalog, nicht die Gewohnheit
 
-Der Katalog steht auf 26.9.3, der Hash hat sich bewegt — die Boxen
-synchronisieren also. Olares pollt alle fünf Minuten.
+Erst nachsehen, was die Box aus dem Katalog bekommt:
 
 ```bash
 olares-cli market get move -s market.AImighty
 ```
 
-Zeigt das nichts, ist der Sync noch nicht durch — abwarten, nicht nachhelfen.
+| Was dort steht | Weg |
+|---|---|
+| die Zielversion aus dem Kopf dieses Dokuments | **Weg A**, aus dem Katalog |
+| eine ältere Version | **Weg B**, über die Quelle `upload` |
+| nichts | Sync läuft noch (Olares pollt alle fünf Minuten) — abwarten, nicht nachhelfen |
 
-Zeigt es **26.9.1 oder 26.9.2**, ist es ein alter Stand, und keiner der beiden
-installiert: 26.9.1 rendert den Worker ohne `apiVersion`, 26.9.2 scheitert an
-der fehlenden `type: system`. Dann **nicht** installieren, sondern warten oder
-die Market Source einmal entfernen, fünf Sekunden warten und neu hinzufügen
-(nach `docs/olares-learnings.md` 9.3 der einzige dauerhafte Fix, wenn
-`raw_data` klemmt; der Sync-Knopf leert den Cache nicht).
+**Niemals eine ältere Version installieren, nur weil sie dasteht.** move 26.9.1
+rendert den Worker ohne `apiVersion`, 26.9.2 wird mit *„Incompatible with this
+Olares version"* abgelehnt. Beide sind gültiges YAML und sehen im Katalog
+gesund aus.
+
+Der Grund, dass Weg B überhaupt existiert: CLAUDE.md verlangt *„installieren
+und `running` messen, erst dann in den Katalog"*. Eine Version, die noch nicht
+gemessen ist, steht also **absichtlich** nicht im Katalog. Nach
+`docs/olares-learnings.md` 9.1 ist der Upload genau dafür gedacht —
+Sichtbarkeit eine Box, *„Entwicklung; registriert die Version, ersetzt kein
+Deployment"*.
+
+Bleibt der Katalog auf einer alten Version stehen, obwohl die neue gelistet
+sein müsste: Market Source entfernen, fünf Sekunden warten, neu hinzufügen.
+Nach 9.3 der einzige dauerhafte Fix, wenn `raw_data` klemmt — der Sync-Knopf
+leert den Cache nicht.
 
 ## 2. Installieren
+
+### Weg A — aus dem Katalog
 
 ```bash
 olares-cli market install move -s market.AImighty --watch
 ```
 
-Olares fragt dabei drei Werte ab, **alle optional**:
+### Weg B — über die Quelle `upload`
+
+Das Chart ist das Artefakt `chart-<version>` aus dem CI-Lauf, der die Images
+gebaut hat. **Nicht selbst neu packen**: `helm package` ist nicht
+byte-reproduzierbar (die mtimes kommen aus dem Checkout), Tarball und base64
+müssen aus einem Lauf stammen.
+
+```bash
+scp move-<version>.tgz olares@<box>:/tmp/
+
+olares-cli market upload --help          # Flag-Satz ist nicht belegt, s. u.
+olares-cli market upload /tmp/move-<version>.tgz
+olares-cli market install move -s upload --watch
+```
+
+Den genauen Flag-Satz von `market upload` habe ich **nicht** belegt — das
+Messdokument nennt den Befehl ohne Flags, und ich habe kein `olares-cli`, um
+ihn zu erfragen. Deshalb `--help` als erster Schritt, statt Flags zu erfinden.
+Gleichwertig und ohne CLI: in der Oberfläche **Market → Upload custom app
+package**. Die Quellen stehen unter **Market → Settings → Market source**, nicht
+in `market --help`.
+
+Muss dieselbe Version ein zweites Mal hoch, geht das nur über diese Quelle:
+`market upgrade -s upload` erlaubt dieselbe Nummer und überschreibt. Im Katalog
+bräuchte es dafür eine neue Version, weil der Hash aus `ID:name:version`
+entsteht.
+
+### Beide Wege: die drei Werte
+
+Olares fragt drei Werte ab, **alle optional**:
 
 | Name | Typ | leer lassen heißt |
 |---|---|---|
@@ -62,8 +106,8 @@ kubectl get pods -n move-<nutzer> \
 ```
 
 Erwartet: zwei Pods, `move` und `moveworker`, beide `true`, beide auf
-`ghcr.io/ska1walker/…:26.9.3`. Steht dort `26.9.1`, hat die Box noch den alten
-Katalogstand synchronisiert — zurück zu Schritt 1, nicht weitermachen.
+`ghcr.io/ska1walker/…:26.9.3`. Steht dort eine ältere Version, ist nicht die
+gelaufen, die hier gemeint ist — zurück zu Schritt 1, nicht weitermachen.
 
 Die Adresse ist `https://3734a903<index>.<nutzer>.<zone>` — `3734a903` ist
 `md5("move")[:8]`. Nicht selbst ausrechnen, sondern nachsehen:

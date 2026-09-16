@@ -99,9 +99,9 @@ jetzt korrigiert.
 | | Stand |
 |---|---|
 | Chart 26.9.3 | gepackt (8537 Byte); `type: system` im Paket, Render 3 Dokumente, alle mit `apiVersion` und `kind` |
-| Images `26.9.3` auf ghcr | **fehlen noch** — der Push läuft nur auf einem `v*`-Tag oder per Klick |
-| Katalogeintrag | steht auf **26.9.2**, also auf dem Chart, das die Box ablehnt |
-| `running` auf der Box | **nicht gemessen** |
+| Images `26.9.3` auf ghcr | da, anonym HTTP 200 |
+| Katalogeintrag | steht auf **26.9.2**, also auf dem Chart, das die Box ablehnt — **absichtlich**, bis `running` gemessen ist |
+| `running` auf der Box | **nicht gemessen** — Weg B in `docs/installieren.md` |
 
 Drei Guards sind daraus entstanden, jeder dort, wo der Fehler durchkam:
 
