@@ -18,22 +18,53 @@ Meldung. Reihenfolge deshalb:
 Stand davor, gemessen: Repo öffentlich, Icon HTTP 200, beide ghcr-Pakete
 anonym abrufbar (für 26.9.1; 26.9.2 ist noch nicht gebaut).
 
-## 1. Ist move angekommen
+## 1. Nicht aus dem Katalog — über die Quelle `upload`
 
-Olares pollt alle fünf Minuten. Der Katalog-Hash hat sich bewegt
-(`666445a6…`), also synchronisiert die Box.
+Hier stand „Katalog abwarten, dann `-s market.AImighty` installieren". Das ist
+für 26.9.2 **falsch**, aus zwei Gründen, die in dieselbe Richtung zeigen:
+
+- Im Katalog steht 26.9.1, und dieses Chart rendert den Worker ohne
+  `apiVersion` (s. o.). Installieren würde scheitern.
+- CLAUDE.md lässt die Reihenfolge nicht offen: *„Images bauen -> auf der
+  eigenen Box installieren und `running` messen -> erst dann in den Katalog."*
+  Der Katalog kommt also **nach** dieser Messung, nicht davor.
+
+`docs/olares-learnings.md` 9.1 nennt für genau diesen Fall den Upload-Weg:
+Sichtbarkeit eine Box, *„Entwicklung; registriert die Version, ersetzt kein
+Deployment"*. Für eine Erstinstallation ist das Letzte kein Problem — es gibt
+noch kein Deployment.
+
+Das Chart dafür ist das Artefakt `chart-26.9.2` aus dem CI-Lauf (enthält
+`move-26.9.2.tgz` und das base64). Herunterladen, auf die Box bringen:
 
 ```bash
-olares-cli market get move -s market.AImighty
+scp move-26.9.2.tgz olares@<box>:/tmp/
 ```
 
-Zeigt das nichts, ist der Sync noch nicht durch — abwarten, nicht nachhelfen.
+**Nicht selbst neu packen und nicht das base64 von irgendwo wiederverwenden.**
+`helm package` ist nicht byte-reproduzierbar (die mtimes kommen aus dem
+Checkout), also müssen Tarball und base64 aus **einem** Lauf stammen.
 
 ## 2. Installieren
 
+Die Quelle heißt `upload`, nicht `market.AImighty`. Den genauen Flag-Satz von
+`market upload` habe ich **nicht** belegt — das Dokument nennt den Befehl, aber
+keine Flags. Deshalb erst fragen, dann tippen:
+
 ```bash
-olares-cli market install move -s market.AImighty --watch
+olares-cli market upload --help
+olares-cli market upload /tmp/move-26.9.2.tgz     # Form aus --help uebernehmen
+olares-cli market install move -s upload --watch
 ```
+
+Alternative ohne CLI, gleichwertig: in der Olares-Oberfläche
+**Market -> Upload custom app package**. Die Quellen stehen dort unter
+**Market -> Settings -> Market source** und nicht in `market --help`.
+
+Muss ein zweites Mal dieselbe Version hoch, geht das nur über diese Quelle:
+`market upgrade -s upload` erlaubt dieselbe Nummer und überschreibt. Im
+Katalog wäre dafür eine neue Version nötig, weil der Hash aus
+`ID:name:version` entsteht.
 
 Olares fragt dabei drei Werte ab, **alle optional**:
 
