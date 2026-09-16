@@ -29,7 +29,12 @@ move/templates/                zwei Deployments, ein Service
 db/schema.sql                  Schema, von Web UND Worker gelesen
 worker/                        Assembler, Platzhalter, Job-Schleife
 web/                           Next.js 15.5, Upload-Pfad, Oberfläche
+docs/olares-learnings.md       das gemessene Olares-Dokument -- gewinnt bei Widerspruch
+docs/design-guide.md           AImighty-Standard, verbindlich fuer jede Oberflaeche
+docs/installieren.md           auf der Box installieren und `running` messen
 .github/workflows/ci.yml       Guards, Tests, beide Images
+.github/workflows/marktpr.yml  Eintrag in die Market Source, PR, optional Merge
+.github/workflows/marktpruefen.yml  Katalog und Chart live nachmessen, taeglich
 .dockerignore
 .gitignore
 ```
@@ -49,50 +54,36 @@ Image-Tags aus `.Chart.AppVersion`, kein GPU-Bedarf in v0.
 
 ## Was noch fehlt
 
-| Datei | Woher |
+| | Woher |
 |---|---|
-| `docs/olares-learnings.md` | das gemessene Olares-Dokument (Stand 15.09.2026). **Wichtigste fehlende Datei** — CLAUDE.md verweist bei jedem Widerspruch darauf. |
-| `docs/design-guide.md` | Kopie aus dem AImighty-Markt-Repo. Ohne sie kann Claude Code die verbindliche Designvorgabe nicht lesen. |
-| ghcr-Pakete auf Public stellen | Einmalig nach dem ersten Push. Pakete sind auch in einem öffentlichen Repo zunächst privat — **gemessen: beide liefern anonym HTTP 403**, und die Installation endet damit in `registry_error`. |
-| `docs/design-guide.md` | s. o. — die Oberfläche folgt bisher der Zusammenfassung im Platzhalter, nicht dem Original. |
 | erster echter fal-Aufruf | Die Generierung ist gebaut und getestet, aber nur gegen ein Doppel. fal.ai ist vom Proxy gesperrt. |
-| Eintrag in einer Market Source | Der eigentliche Grund, warum move nirgends im Marktplatz auftaucht. S. u. |
+| Installation auf der Box, `running` gemessen | Der letzte Schritt, und keiner, den ein Automat nimmt. Ablauf in `docs/installieren.md`. |
 
-## Wie eine App auf die Box kommt — drei Wege, einer davon defekt
+Erledigt und gemessen: Repo öffentlich (Icon HTTP 200), beide ghcr-Pakete
+anonym abrufbar, Images `26.9.1` frisch, Eintrag im Katalog live
+(`marktpruefen.yml` prüft täglich), `docs/olares-learnings.md` und
+`docs/design-guide.md` liegen vor.
 
-Aus `docs/OLARES_DEEP_DIVE.md §4` und `.claude/skills/olares-release/SKILL.md`
-im Insilo-Repo, dort auf einer echten Box gemessen:
+## Wie eine App auf die Box kommt — drei Wege
 
-| Weg | Sichtbarkeit | Trägt? |
+Nach `docs/olares-learnings.md` 9.1, auf einer echten Box gemessen:
+
+| Weg | Sichtbarkeit | Wofür |
 |---|---|---|
-| PR an `beclab/apps` | weltweit | ja, Tage Review |
-| **eigene Market Source** | jede Box, die die Quelle einträgt | **ja — der Weg für move** |
-| Upload custom chart (Market UI, `market upload`) | nur diese Box | **nein** |
+| `olares-cli market upload` | eine Box | **Entwicklung.** Registriert die Version, **ersetzt kein Deployment** |
+| eigene **Market Source**, Box pollt alle 5 min | jede Box, die die Quelle einträgt | **Kundenauslieferung — der Weg für move** |
+| PR an `beclab/apps` | weltweit | öffentliche Produkte, Tage bis Wochen |
 
-**Der lokale Upload ist als Auslieferungsweg ausgeschlossen** — er registriert
-eine Version auf genau einer Box.
+Ich hatte hier einen Widerspruch zwischen insilos und beacons Doku stehen
+lassen und vermutet, es liege an den zwei Schritten. Das gemessene Dokument
+sagt es ohne Vermutung: der Upload ist ein **Entwicklungsweg**, kein
+Deployment. Für moves erste Messung taugt er damit — für die Auslieferung
+nicht.
 
-**Ob er als Installationsweg für die erste Messung trägt, ist offen.** Zwei
-Dokumente von derselben Box widersprechen sich, und das ist auf der Box zu
-entscheiden, nicht am Schreibtisch:
-
-| Quelle | Aussage |
-|---|---|
-| `insilo/docs/OLARES_DEEP_DIVE.md §4` | *Market UI → Upload .tgz* erzeugt einen `ApplicationManager`-CR, aber **kein** `Application`-CR, kein `ns-owner`-Label, keine NetworkPolicy → `check-auth` findet Authelia nicht → `Init:Error`. „Für Production-Apps unbenutzbar." |
-| `beacon/docs/BETRIEB.md §4` | genau dieser Weg als Vorstufe: `olares-cli market upload dist/beacon-0.1.1.tgz` und danach `olares-cli market install beacon`, unter der Überschrift *„Auf der eigenen Box installieren, bevor irgendetwas in einen Markt geht"*. |
-
-Vermutlich liegt es an den **zwei Schritten**: insilo beschreibt den Upload
-über die UI als Einzelschritt, beacon lädt hoch **und ruft danach
-`market install`** — also den normalen Installationsablauf, der den
-`Application`-CR anlegt. Das ist eine Vermutung, keine Messung.
-
-Für move heißt das: erst `market upload` + `market install` versuchen. Trägt
-es, ist `running` messbar, bevor irgendetwas in einen Katalog geht — genau die
-Reihenfolge, die CLAUDE.md verlangt. Trägt es nicht, ist der Markteintrag
-selbst der Installationsweg, und das ist kein Verstoß gegen die Regel: die
-eigene Market Source ist keine Veröffentlichung an die Welt, nur Boxen mit
-dieser Quelle sehen move. Verboten ist der Schritt in einen **öffentlichen**
-Katalog vor der Messung.
+**Nach dem Merge ist nichts ausgerollt.** Die Kette laut 9.2: Edge 1–2 min →
+Box pollt bis 5 min → Update erscheint → **ein Mensch drückt „Upgrade"** →
+Pods nachmessen. Deshalb werden „im Markt" und „auf der Box" getrennt
+gemeldet; auf Kais Box lief einmal 0.9.6, während der Markt 0.9.9 trug.
 
 ## Warum es bei insilo und beacon geht
 
@@ -117,7 +108,10 @@ einen Schritt, der bei beiden Handarbeit war.
 
 - Er pushte den Branch **direkt** in Marcs Repo. Bei Leserechten endet das in
   einem 403. Jetzt geht der Push in den Fork `ska1walker/aimighty-market` und
-  der Pull Request wird über Fork-Grenze gestellt (`--head ska1walker:<branch>`).
+  der Pull Request wird über die Fork-Grenze gestellt — mit dem **nackten**
+  Branchnamen. Die Form `<eigner>:<branch>` endet laut
+  `docs/olares-learnings.md` 9.2 in „No commits between"; sie stand hier,
+  wäre aber erst beim ersten Lauf über den Fork aufgefallen.
 - Der Fork lag gemessen **62 Commits hinter** der Quelle. Ein Eintrag auf
   diesem Stand wäre ein PR, der 62 fremde Änderungen zurückdreht. Der Branch
   zweigt deshalb von `upstream/main` ab, nicht vom Fork-Stand.

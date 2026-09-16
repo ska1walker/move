@@ -150,13 +150,18 @@ jobs:
           darf="$(gh api "repos/$QUELLE" --jq '.permissions.push // false' 2>/dev/null || echo false)"
           if [ "$darf" = "true" ]; then
             ziel="$QUELLE"
-            kopf="move-$version"
             echo "Das Token darf in $QUELLE schreiben -- direkter Weg."
           else
             ziel="$FORK"
-            kopf="ska1walker:move-$version"
             echo "Kein Schreibrecht auf $QUELLE -- Weg ueber den Fork $FORK."
           fi
+          # In BEIDEN Faellen der nackte Branchname. Gemessen in
+          # docs/olares-learnings.md 9.2: "Mit gh pr create im Fork-Checkout
+          # --head <branch>, nicht --head <owner>:<branch> (=> 'No commits
+          # between')". Hier stand die Doppelpunkt-Form -- sie waere beim
+          # ersten Lauf ueber den Fork gescheitert, und der ist bisher nie
+          # gelaufen, weil das Token Schreibrecht auf die Quelle hatte.
+          kopf="move-$version"
           echo "ziel=$ziel" >> "$GITHUB_OUTPUT"
           echo "kopf=$kopf" >> "$GITHUB_OUTPUT"
           echo "branch=move-$version" >> "$GITHUB_OUTPUT"

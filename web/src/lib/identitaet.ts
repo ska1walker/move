@@ -7,17 +7,40 @@
  * dieselbe Funktion auf. Zwei Kopien derselben Logik driften, und der
  * Upload-Pfad ist genau der, auf dem es niemandem auffaellt.
  *
- * ACHTUNG, ungeprueft: Der Name der Kopfzeile stammt aus der Olares-
- * Konvention und ist auf der Box noch nicht nachgemessen. Eine Beschreibung
- * ist kein Beleg. Pruefen mit:
+ * WELCHE KOPFZEILE -- korrigiert nach docs/olares-learnings.md 3.2, dort auf
+ * einer echten Box gemessen:
  *
- *   kubectl logs -n move-<nutzer> deploy/move
+ *   "Der Sidecar setzt X-Bfl-User NICHT. Gemessen ueber den Admin-Port
+ *    (config_dump): kein request_headers_to_add; allowed_upstream_headers
+ *    kennt nur authorization, proxy-authorization, remote-*, authelia-*.
+ *    Nach oben kommt Remote-User. Das ist die verlaessliche Identitaet."
  *
- * und einem Handler, der die eingehenden Kopfzeilen protokolliert. Weicht
- * der Name ab, aendert sich nur MOVE_USER_HEADER.
+ * Vorher stand hier `x-bfl-user`, aus der Konvention abgeleitet und als
+ * ungeprueft markiert. Es war falsch, und zwar auf zwei Ebenen:
+ *
+ *   1. Der Kopf kommt am Pod gar nicht an -- die Identitaet waere immer
+ *      `null` gewesen.
+ *   2. Waere er angekommen, haette ihn der BROWSER behaupten koennen. Das
+ *      Dokument ist da unmissverstaendlich: bei einem Dienst ohne Entrance
+ *      "frei behauptbar", bei authLevel public "aus dem Internet
+ *      faelschbar". Eine serverseitig gelesene Identitaet darf nicht das
+ *      sein, was der Client von sich behauptet.
+ *
+ * Deshalb gibt es KEINEN Rueckfall auf x-bfl-user. Fehlt Remote-User, ist
+ * die Identitaet unbekannt -- auf der Box ein Fehler, nicht ein Gast.
+ *
+ * MOVE_DEV_USER ersetzt den Kopf fuer die Entwicklung ohne Envoy. Das Chart
+ * setzt die Variable nicht, auf der Box bleibt ein fehlender Kopf also ein
+ * fehlender Kopf.
+ *
+ * MOVE_USER_HEADER bleibt der Notausgang: weicht die Messung auf der Box ab,
+ * aendert sich ein Wert und nicht der Code.
  */
 
-export const USER_HEADER = process.env.MOVE_USER_HEADER ?? 'x-bfl-user';
+export const USER_HEADER = (process.env.MOVE_USER_HEADER ?? 'remote-user').toLowerCase();
+
+/** Wird bewusst NICHT gelesen. Der Browser kann ihn setzen. */
+export const NICHT_VERTRAUEN = 'x-bfl-user';
 
 export type Identitaet = {
   /** Angemeldeter Nutzer, oder null wenn die Kopfzeile fehlt. */
@@ -31,7 +54,21 @@ export function identitaet(headers: Headers): Identitaet {
   if (roh && roh.trim() !== '') {
     return { nutzer: roh.trim(), quelle: USER_HEADER };
   }
-  return { nutzer: null, quelle: 'fehlt' };
+
+  // Nur fuer die Entwicklung ohne Envoy. Auf der Box nicht gesetzt.
+  const dev = process.env.MOVE_DEV_USER;
+  if (dev && dev.trim() !== '') {
+    return { nutzer: dev.trim(), quelle: 'MOVE_DEV_USER' };
+  }
+
+  // Die Quelle sagt, WARUM nichts da ist -- und ob jemand es mit dem
+  // ungenutzten Kopf versucht hat. Das gehoert ins Log: still geschluckt
+  // verbirgt es genau die Verwechslung, die diese Datei behebt.
+  const behauptet = headers.get(NICHT_VERTRAUEN);
+  return {
+    nutzer: null,
+    quelle: behauptet ? `fehlt (${NICHT_VERTRAUEN} behauptet, ignoriert)` : 'fehlt',
+  };
 }
 
 /**

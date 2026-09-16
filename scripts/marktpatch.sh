@@ -214,8 +214,12 @@ geht ueber die Fork-Grenze:
 
   git -C $MARKT push -u origin $BRANCH        # origin = der Fork
   gh pr create --repo bayerhazard/aimighty-market \\
-    --base main --head ska1walker:$BRANCH \\
+    --base main --head $BRANCH \\
     --title "$APP $VERSION in den Katalog"
+
+  Der nackte Branchname, auch aus dem Fork. Gemessen in
+  docs/olares-learnings.md 9.2: die Form <eigner>:<branch> endet in
+  "No commits between"
 
 Zeigt origin hier auf $HERKUNFT, vorher umstellen:
 
