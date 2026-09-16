@@ -56,6 +56,69 @@ Image-Tags aus `.Chart.AppVersion`, kein GPU-Bedarf in v0.
 | erster echter fal-Aufruf | Die Generierung ist gebaut und getestet, aber nur gegen ein Doppel. fal.ai ist vom Proxy gesperrt. |
 | Eintrag in einer Market Source | Der eigentliche Grund, warum move nirgends im Marktplatz auftaucht. S. u. |
 
+## Wie eine App auf die Box kommt — drei Wege, einer davon defekt
+
+Aus `docs/OLARES_DEEP_DIVE.md §4` und `.claude/skills/olares-release/SKILL.md`
+im Insilo-Repo, dort auf einer echten Box gemessen:
+
+| Weg | Sichtbarkeit | Trägt? |
+|---|---|---|
+| PR an `beclab/apps` | weltweit | ja, Tage Review |
+| **eigene Market Source** | jede Box, die die Quelle einträgt | **ja — der Weg für move** |
+| Upload custom chart (Market UI, `market upload`) | nur diese Box | **nein** |
+
+**Der lokale Upload ist kein Auslieferungsweg und auch kein Testweg.** Olares
+hat ihn als Dev-Feature gedacht; er löst den vollen BFL-Ablauf nicht aus. Es
+entsteht **kein `Application`-CR, kein `ns-owner`-Label, keine NetworkPolicy**
+— dann findet `check-auth` Authelia nicht und der Pod endet in `Init:Error`.
+Er registriert eine Version, er installiert nicht.
+
+Das hat eine Folge, die die Reihenfolge in CLAUDE.md präzisiert statt ihr zu
+widersprechen: *„erst installieren und `running` messen, dann in den Katalog"*
+— der Markteintrag **ist** hier der Installationsweg. Kein Widerspruch, denn
+die eigene Market Source ist keine Veröffentlichung an die Welt: nur Boxen,
+die diese Quelle eingetragen haben, sehen move. Der Eintrag kommt also zuerst,
+dann die Installation, dann die Messung. Was CLAUDE.md verbietet, ist der
+Schritt in einen **öffentlichen** Katalog vor der Messung.
+
+## Warum es bei insilo geht
+
+Weil insilo denselben Weg nimmt, nicht einen anderen: `insilo-0.1.98.tgz`
+steht in Marcs `_lib.ts`, der Eintrag in `_apps.ts` Zeile 854. Drei
+Unterschiede, alle nachprüfbar:
+
+1. **Das insilo-Repo ist öffentlich.** Sein Icon zeigt auf
+   `raw.githubusercontent.com/ska1walker/insilo/main/icon.png` — dieselbe Form
+   wie bei move, und sie löst auf. Bei move noch nicht.
+2. **Der Markt-Schritt war immer von Hand**, auf Kais Rechner. `release.sh`
+   packt das Chart dort (Helm ist vorhanden) und legt es nach `~/Downloads`;
+   die Einträge in `_apps.ts` und `_lib.ts` setzt jemand mit Schreibrecht.
+3. **Insilos eigene CI pusht nie in Marcs Repo.** `release.yml` baut
+   ausschließlich die vier Images nach ghcr.
+
+Es gab also keine Automatisierung, die man für move hätte übernehmen können.
+`marktpr.yml` automatisiert einen Schritt, der auch für insilo Handarbeit war.
+
+### Zwei Fallen, die dort Zeit gekostet haben
+
+**Der Markt hat zwei Quellen.** Das Cloudflare-Pages-Projekt wird auch direkt
+bespielt, am Repo vorbei. Am 19.8. lag insilo 0.1.81 um 10:40 live und war um
+12:10 aus dem Katalog verschwunden — ohne Workflow-Lauf. Ein Deploy aus dem
+Repo holte es zurück. Daher: aus dem Repo deployen ist der normale Weg, und
+man ersetzt damit einen eventuellen Direkt-Deploy.
+
+**Vier fremde Einträge im Repo sind widersprüchlich** — `aimqwen3asr`,
+`aimqwen3ttsvllm`, `aimvoxtral4bvllm` und `rewind` tragen in `_apps.ts` eine
+Version, zu der in `_lib.ts` kein Chart liegt. `getChartByAppName` baut
+`name-version.tgz` und findet nichts, also 404. Das steht dort seit vor dem
+ersten Insilo-Commit. Nicht unser Werk und nicht unsere Reparatur, aber
+vermutlich der Grund, warum Marc sein eigenes Bundle direkt aufspielt.
+
+**Und nie „liegt im Markt" sagen, ohne live gemessen zu haben** — Katalog
+*und* Chart, denn ein gelisteter Eintrag ohne abrufbares Chart ist nicht
+installierbar. Nach einem Deploy braucht die Edge eine bis zwei Minuten; ein
+404 direkt danach heißt noch nichts.
+
 ## Warum move nicht im Marktplatz steht
 
 Weil eine App nicht dadurch in den Marktplatz kommt, dass sie hier im Repo
