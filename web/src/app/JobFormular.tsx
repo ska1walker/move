@@ -190,7 +190,7 @@ export default function JobFormular({
               'Von fal.ai erzeugen',
               falBereit
                 ? 'eine Beschreibung je Einstellung'
-                : 'kein Schlüssel hinterlegt — bei der Installation unter FAL_KEY',
+                : 'kein Schlüssel hinterlegt — siehe Hinweis unten',
             ],
           ] as [Quelle, string, string][]
         ).map(([wert, titel, hinweis]) => (
@@ -210,6 +210,35 @@ export default function JobFormular({
           </label>
         ))}
       </fieldset>
+
+      {!falBereit && (
+        <details className="feld">
+          <summary>Wo kommt der fal.ai-Schlüssel hin? — hier aufklappen</summary>
+          <p>
+            <strong>Nicht hier.</strong> Der Schlüssel gehört in die
+            App-Einstellungen von Olares, nicht in diese Oberfläche — move
+            bekommt ihn nie zu sehen. Das Web erfährt nur ja oder nein; den
+            Schlüssel selbst hält allein der Worker.
+          </p>
+          <p>
+            In Olares: die move-Kachel öffnen, zu den Einstellungen der App,
+            dort steht das Feld <code>FAL_KEY</code> — dasselbe, das bei der
+            Installation gefragt wurde. Eintragen, speichern.
+          </p>
+          <p className="leise">
+            Danach muss der Pod die neue Umgebung bekommen. Alle drei Felder
+            tragen <code>applyOnChange</code>, Olares sollte das also von
+            selbst nachziehen. Bleibt diese Auswahl gesperrt, ist genau das
+            nicht passiert — dann hilft ein Neustart der App. Ob
+            <code>applyOnChange</code> ohne Neuinstallation greift, ist in
+            diesem Projekt noch nicht gemessen.
+          </p>
+          <p className="leise">
+            Ohne Schlüssel bleibt alles andere nutzbar: Platzhalter und eigene
+            MP4s laufen ohne einen einzigen Modellaufruf durch.
+          </p>
+        </details>
+      )}
 
       {quelle === 'upload' && (
         <label className="feld" htmlFor="clips">
@@ -292,7 +321,11 @@ export default function JobFormular({
           ))}
 
           <label className="feld" htmlFor="model">
-            <span>Modell (leer: Vorgabe des Workers)</span>
+            <span>
+              Modell — leer heißt: die Vorgabe aus den App-Einstellungen
+              (<code>MOVE_FAL_MODEL</code>), und ist auch die leer, dann
+              <code> fal-ai/ltx-video</code>
+            </span>
             <input
               id="model"
               type="text"
@@ -303,6 +336,35 @@ export default function JobFormular({
               onChange={(ev) => setModel(ev.target.value)}
             />
           </label>
+
+          <details className="feld">
+            <summary>Woher weiß fal, welches Modell gemeint ist? — hier aufklappen</summary>
+            <p>
+              <strong>Es weiß es nicht — move sagt es ihm.</strong> Der
+              Modellname ist das erste Argument des Aufrufs. fal.ai ist keine
+              einzelne KI, sondern eine Plattform mit vielen Modellen, und
+              dieser Name wählt eines davon aus.
+            </p>
+            <p>Der Name kommt aus der ersten Quelle, die gefüllt ist:</p>
+            <ul>
+              <li>das Feld oben, je Job</li>
+              <li>
+                sonst <code>MOVE_FAL_MODEL</code> aus den App-Einstellungen von
+                Olares
+              </li>
+              <li>
+                sonst <code>fal-ai/ltx-video</code>, die eingebaute Vorgabe
+              </li>
+            </ul>
+            <p className="leise">
+              Welche Modelle es bei fal gibt und wie ihre Eingaben heißen,
+              konnte in diesem Projekt nicht nachgelesen werden — fal.ai ist
+              aus der Bauumgebung gesperrt. Passt ein Name oder ein Argument
+              nicht, scheitert der Job <strong>mit der vollständigen Antwort
+              von fal</strong> in der Job-Liste. Das ist Absicht: daraus lässt
+              sich der richtige Name ablesen, statt zu raten.
+            </p>
+          </details>
 
           {/* Jeder Aufruf wird abgerechnet. Das gehoert vor den Knopf, nicht
               in die Rechnung. */}

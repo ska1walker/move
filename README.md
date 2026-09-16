@@ -22,7 +22,7 @@ scripts/check-chart.sh         Vorab-Guards, aus dem Insilo-Original umgebaut
 scripts/make-icon.py           erzeugt icon.png reproduzierbar, ohne Bildbibliothek
 icon.png                       512x512, Hanseatenblau + Gold
 OlaresManifest.yaml            Root-Manifest (Store)
-move/Chart.yaml                Version 26.9.5
+move/Chart.yaml                Version 26.9.6
 move/OlaresManifest.yaml       Chart-Manifest, byteweise identisch zum Root
 move/values.yaml               keine Pins, keine Secrets
 move/values-olares-stub.yaml   Stub für helm lint/template
@@ -44,8 +44,8 @@ Beide Images bauen mit dem **Repo-Wurzelverzeichnis** als Kontext, weil
 `db/schema.sql` von Web und Worker gemeinsam gelesen wird:
 
 ```bash
-docker build -f worker/Dockerfile -t moveworker:26.9.5 .
-docker build -f web/Dockerfile    -t move:26.9.5 .
+docker build -f worker/Dockerfile -t moveworker:26.9.6 .
+docker build -f web/Dockerfile    -t move:26.9.6 .
 ```
 
 Chart-Stand: ein Entrance auf `move` (Port 3000), Worker `moveworker` ohne
@@ -55,15 +55,33 @@ Image-Tags aus `.Chart.AppVersion`, kein GPU-Bedarf in v0.
 
 ## Wie man damit arbeitet
 
-1. **Quellvideo hochladen.** Der Worker sucht die Schnittzeitpunkte (`scdet`)
-   und das Beat-Grid (librosa) und legt daraus ein Template ab. Das Video
-   selbst wird nicht Teil des Ergebnisses — nur seine Zeitstempel.
+0. **Nichts tun.** Drei Mustertemplates legt der Worker beim Start selbst an:
+   *Schnelle Montage* (8 harte Schnitte im 1-Sekunden-Raster, 120 bpm),
+   *Trailer-Aufbau* (Einstellungen werden kürzer, Schluss wieder gehalten) und
+   *Ruhige Sequenz* (4 lange Einstellungen, drei Blenden). Damit lässt sich
+   sofort ein Job anlegen. Sie sind änderbar — der Seed legt nur an, was
+   fehlt, und überschreibt nie.
+1. **Quellvideo hochladen**, wenn ein eigener Schnittrhythmus her soll. Der
+   Worker sucht die Schnittzeitpunkte (`scdet`) und das Beat-Grid (librosa)
+   und legt daraus ein Template ab. Das Video selbst wird nicht Teil des
+   Ergebnisses — nur seine Zeitstempel.
 2. **Figur anlegen**, wenn dieselbe Person in mehreren Einstellungen
    auftreten soll. Name, Beschreibung, Referenzbild.
 3. **Job anlegen**: Template wählen, Quelle der Clips wählen (Platzhalter,
    eigene MP4s oder fal.ai), bei fal je Einstellung eine Beschreibung und
    optional eine Figur.
 4. **Ergebnis abspielen.** Der fertige Schnitt liegt als MP4 in der Liste.
+
+### Wo der fal.ai-Schlüssel hingehört, und welches Modell läuft
+
+| Frage | Antwort |
+|---|---|
+| Wo trage ich den Schlüssel ein? | In die **App-Einstellungen von Olares**, Feld `FAL_KEY` — dasselbe, das die Installation fragt. **Nicht** in moves Oberfläche: das Web erfährt nur ja/nein (`MOVE_FAL_BEREIT`), den Schlüssel hält allein der Worker. |
+| Wo kommt der Prompt hin? | Im Job-Formular, Quelle *Von fal.ai erzeugen*: **eine Beschreibung je Einstellung**, dazu optional eine Figur. Die Bildgröße aus dem Template hängt move selbst an. |
+| Woher weiß fal, welche KI? | **Es weiß es nicht — move sagt es.** Der Modellname ist das erste Argument des Aufrufs; fal.ai ist eine Plattform mit vielen Modellen. Der Name kommt aus der ersten gefüllten Quelle: Feld im Formular → `MOVE_FAL_MODEL` → `fal-ai/ltx-video`. |
+
+Alle drei Antworten stehen auch in der Oberfläche, aufklappbar an der Stelle,
+wo die Frage entsteht.
 
 ### Konsistente Personen — wie das funktioniert
 
@@ -91,7 +109,7 @@ GPU-Zeit und Trainingsdaten.
 | | Woher |
 |---|---|
 | erster echter fal-Aufruf | Die Generierung ist gebaut und gegen ein Doppel getestet, aber nie gegen fal gelaufen. fal.ai und docs.fal.ai sind vom Proxy gesperrt. **Konkret unbelegt: die Argumentnamen** `image_url` und `seed` — begründete Annahme, kein gemessenes Schema. Passen sie nicht, scheitert der Job mit der vollständigen Antwort in `render_job.error`, und `MOVE_FAL_BILD_ARGUMENT` bzw. `MOVE_FAL_SEED_ARGUMENT` korrigieren es ohne neues Image. |
-| `running` auf der Box | **26.9.3 läuft dort** — also ohne Upload, Extraktion und Figuren, und mit dem Autofill-Fehler im Namensfeld. Auf der Box passiert nichts von selbst: nach §9.2 drückt ein Mensch „Upgrade". |
+| `running` auf der Box | **26.9.5 läuft dort**, gemeldet und bestätigt. Auf der Box passiert nichts von selbst: nach §9.2 drückt ein Mensch „Upgrade". |
 
 Erledigt und gemessen: Repo öffentlich (Icon HTTP 200), beide ghcr-Pakete
 anonym abrufbar, `docs/olares-learnings.md` und `docs/design-guide.md` liegen
@@ -135,6 +153,7 @@ jetzt korrigiert.
 | Chart im Katalog | **26.9.5** ausgeliefert: HTTP 200, 9463 Byte, einmal gzippt, `type: system` drin, Render 3 Dokumente alle mit `apiVersion` und `kind` |
 | Images auf ghcr | 26.9.1 bis 26.9.5, alle anonym HTTP 200 |
 | Katalogeintrag | 26.9.5, live gemessen (PR #77), Hash `98a16f17…` |
+| Chart 26.9.6 | gepackt und geprüft, noch nicht veröffentlicht |
 | `running` auf der Box | **nicht gemessen** — Weg A in `docs/installieren.md` |
 
 Vier Guards sind daraus entstanden, jeder dort, wo der Fehler durchkam:
@@ -271,7 +290,7 @@ Weil eine App nicht dadurch in den Marktplatz kommt, dass sie hier im Repo
 liegt. Eine **Market Source ist ein eigener Webdienst** (bei AImighty:
 Cloudflare Pages, Repo `bayerhazard/aimighty-market`). Sie listet die App
 unter `/api/v1/appstore/info` und liefert das Chart unter
-`/api/v1/applications/move/chart?fileName=move-26.9.5.tgz`. Das Chart steckt
+`/api/v1/applications/move/chart?fileName=move-26.9.6.tgz`. Das Chart steckt
 dort als base64 in einer Tabelle. In **move ist noch nichts davon eingetragen** —
 dieses Repo enthält nur das Chart selbst.
 
@@ -283,8 +302,8 @@ dieses Repo enthält nur das Chart selbst.
 
 | Datei | wohin |
 |---|---|
-| `dist/move-26.9.5.tgz` | das gepackte Chart |
-| `dist/move-26.9.5.tgz.base64` | eine Zeile, als Wert unter dem Schlüssel `"move-26.9.5.tgz"` |
+| `dist/move-26.9.6.tgz` | das gepackte Chart |
+| `dist/move-26.9.6.tgz.base64` | eine Zeile, als Wert unter dem Schlüssel `"move-26.9.6.tgz"` |
 | `dist/markteintrag.json` | die Metadatenfelder, aus dem Manifest gelesen |
 
 Der CI-Job **Chart-Paket** führt das bei jedem Push mit echtem Helm aus und

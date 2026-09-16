@@ -104,8 +104,9 @@ export default function Seite() {
         <h2>Job anlegen</h2>
         {vorlagen.length === 0 ? (
           <p className="leise">
-            Noch kein Template. Oben ein Quellvideo hochladen — der Worker gewinnt
-            daraus die Schnittzeitpunkte, und danach steht hier das Formular.
+            Noch kein Template. Drei Muster legt der Worker beim Start selbst an —
+            steht hier nichts, läuft er noch nicht. Ein eigenes Template entsteht
+            oben aus einem Quellvideo.
           </p>
         ) : (
           <JobFormular
@@ -150,6 +151,14 @@ export default function Seite() {
 
       <section className="block">
         <h2>Templates</h2>
+        <p className="leise">
+          Ein Template ist keine KI, sondern eine Liste von Zeitstempeln: wann
+          geschnitten wird, wie lang jede Einstellung steht, wo geblendet wird.
+          Die drei <strong>Muster</strong> sind handgeschrieben und zeigen drei
+          Schnittgedanken — schnelle Montage, Trailer-Aufbau, ruhige Sequenz.
+          Sie lassen sich ändern; der Worker legt sie nur an, wenn sie fehlen,
+          und überschreibt nie.
+        </p>
         {vorlagen.length === 0 ? (
           <p className="leise">keine</p>
         ) : (

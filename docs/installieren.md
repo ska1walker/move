@@ -3,14 +3,14 @@
 Der letzte Schritt, und der einzige, den kein Automat übernehmen kann: die
 Box steht im lokalen Netz, die Anmeldung braucht Browser und TOTP.
 
-**Zielversion ist `26.9.5`.** Woher die Sprünge kommen, kurz:
+**Zielversion ist `26.9.6`.** Woher die Sprünge kommen, kurz:
 
 | Version | Was sie behebt |
 |---|---|
 | 26.9.2 | Worker rendert ohne `apiVersion` — nicht installierbar |
 | 26.9.3 | fehlendes `type: system` — Box lehnt mit *„Incompatible with this Olares version"* ab |
 | 26.9.4 | Oberfläche konnte nichts: kein Upload, keine Extraktion, keine Figuren |
-| 26.9.5 | Namensfeld verschluckte die Eingabe (Autofill), plus Hinweise zum Referenzbild |
+| 26.9.6 | Namensfeld verschluckte die Eingabe (Autofill), plus Hinweise zum Referenzbild |
 
 **Der Tabelle unten folgen, nicht dieser Zeile:** welche Version im Katalog
 liegt, ändert sich schneller als dieses Dokument. `market get` fragen und
@@ -107,7 +107,7 @@ kubectl get pods -n move-<nutzer> \
 ```
 
 Erwartet: zwei Pods, `move` und `moveworker`, beide `true`, beide auf
-`ghcr.io/ska1walker/…:26.9.5`. Steht dort eine ältere Version, ist nicht die
+`ghcr.io/ska1walker/…:26.9.6`. Steht dort eine ältere Version, ist nicht die
 gelaufen, die hier gemeint ist — zurück zu Schritt 1, nicht weitermachen.
 
 Die Adresse ist `https://3734a903<index>.<nutzer>.<zone>` — `3734a903` ist

@@ -1,0 +1,22 @@
+{
+  "id": "muster-trailer-aufbau",
+  "name": "Muster: Trailer-Aufbau",
+  "source_label": "Mustertemplate, handgeschrieben -- nicht aus einem Video extrahiert",
+  "duration_ms": 15000,
+  "shot_count": 8,
+  "created_at": "2026-09-16T00:00:00Z",
+  "beat_grid": {
+    "bpm": 100.0,
+    "offsets_ms": [0, 600, 1200, 1800, 2400, 3000, 3600, 4200, 4800, 5400, 6000, 6600, 7200, 7800, 8400, 9000, 9600, 10200, 10800, 11400, 12000, 12600, 13200, 13800, 14400]
+  },
+  "cuts": [
+    { "at_ms": 0,     "transition": "cut",       "shot_scale": "wide",   "transition_ms": 0 },
+    { "at_ms": 3600,  "transition": "crossfade", "shot_scale": "medium", "transition_ms": 600 },
+    { "at_ms": 6600,  "transition": "crossfade", "shot_scale": "close",  "transition_ms": 400 },
+    { "at_ms": 9000,  "transition": "cut",       "shot_scale": "medium", "transition_ms": 0 },
+    { "at_ms": 10800, "transition": "cut",       "shot_scale": "close",  "transition_ms": 0 },
+    { "at_ms": 12000, "transition": "cut",       "shot_scale": "detail", "transition_ms": 0 },
+    { "at_ms": 12600, "transition": "cut",       "shot_scale": "close",  "transition_ms": 0 },
+    { "at_ms": 13200, "transition": "cut",       "shot_scale": "wide",   "transition_ms": 0 }
+  ]
+}

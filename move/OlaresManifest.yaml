@@ -25,7 +25,7 @@ metadata:
   appid: move
   icon: https://raw.githubusercontent.com/ska1walker/move/main/icon.png
   title: Move
-  version: 26.9.5
+  version: 26.9.6
   description: Cut templates as timestamps, applied deterministically with ffmpeg
   categories:
     - Utilities
@@ -43,7 +43,7 @@ entrances:
     authLevel: private
 
 spec:
-  versionName: 26.9.5
+  versionName: 26.9.6
   fullDescription: |
     Move builds videos from cut templates.
 
@@ -61,6 +61,25 @@ spec:
 
     **Resource usage** CPU only. No GPU is requested in this version.
   upgradeDescription: |
+    26.9.6: Three sample templates, so the app is usable the moment it opens.
+    Until now the first visit showed an empty page and a hint; a template had
+    to be extracted from an uploaded video first. The worker now seeds three
+    hand-written ones on start -- fast montage, trailer build, quiet sequence --
+    each showing a different editing idea rather than different numbers. All
+    three render to exactly their declared runtime: 8.000, 15.000 and 16.000
+    seconds.
+
+    Seeding never overwrites. Fixed ids, insert-if-absent: edit a sample and
+    your version survives every restart and every upgrade. A broken sample
+    file is logged and skipped rather than stopping the worker -- the job loop
+    matters more than an example.
+
+    The interface now answers three questions where they come up: where the
+    fal.ai key goes (Olares app settings, never in move), where the prompt for
+    a generated shot goes (one per shot, under "from fal.ai"), and how fal
+    knows which model to use (it does not -- move passes the name, from the
+    per-job field, else MOVE_FAL_MODEL, else fal-ai/ltx-video).
+
     26.9.5: Fixes a field that silently swallowed what you typed, and adds
     guidance on reference images. The name field of a figure was a controlled
     React input; the browser autofilled it, which sets the DOM value without

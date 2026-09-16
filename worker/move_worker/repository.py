@@ -280,6 +280,36 @@ class Repository:
         )
         return kennung
 
+    def template_exists(self, template_id: str) -> bool:
+        return (
+            self.connect()
+            .execute("SELECT 1 FROM cut_template WHERE id = ?", (template_id,))
+            .fetchone()
+            is not None
+        )
+
+    def seed_template(self, template: CutTemplate) -> bool:
+        """Legt ein Mustertemplate an, wenn es die id noch nicht gibt.
+
+        NICHT `INSERT OR REPLACE`, und das ist der ganze Punkt. Die Learnings
+        nennen den Fall wortwoertlich: "Ein Seed mit `on conflict do update`
+        ueberschreibt eine Migration Sekundenbruchteile spaeter -- was der
+        Seed besitzt, gehoert in den Seed." Ein Seed, der bei jedem
+        Worker-Start ueberschreibt, nimmt dem Nutzer jede Aenderung an einem
+        Mustertemplate weg, ohne dass etwas scheitert.
+
+        Rueckgabe: True, wenn angelegt wurde. False heisst, es war schon da --
+        kein Fehler, der normale Fall ab dem zweiten Start.
+        """
+        template.validate()
+        if not template.id:
+            raise RepositoryError("Ein Mustertemplate braucht eine feste id")
+        if self.template_exists(template.id):
+            return False
+        self.save_template(template)
+        LOG.info("Mustertemplate angelegt", extra={"id": template.id, "name": template.name})
+        return True
+
     def get_template(self, template_id: str) -> CutTemplate:
         zeile = self.connect().execute(
             "SELECT * FROM cut_template WHERE id = ?", (template_id,)

@@ -9,6 +9,7 @@ dieser Einschraenkung, nicht Bequemlichkeit.
 
 from __future__ import annotations
 
+import json
 import logging
 import math
 import os
@@ -46,6 +47,26 @@ def data_dir() -> Path:
 
 def db_path() -> Path:
     return data_dir() / "db" / "move.sqlite3"
+
+
+# Wo die Mustertemplates liegen. Im Image unter /app/examples (das Dockerfile
+# kopiert worker/examples dorthin), im Repo neben dem Paket. Dieselbe Form wie
+# bei db/schema.sql -- geraten wird nichts, gesucht in einer festen Liste.
+MUSTER_ORDNER = (
+    Path("/app/examples"),
+    Path(__file__).resolve().parent.parent / "examples",
+)
+
+
+def muster_ordner() -> Path | None:
+    uebersteuert = os.environ.get("MOVE_MUSTER_DIR", "").strip()
+    if uebersteuert:
+        pfad = Path(uebersteuert)
+        return pfad if pfad.is_dir() else None
+    for kandidat in MUSTER_ORDNER:
+        if kandidat.is_dir():
+            return kandidat
+    return None
 
 
 def max_fal_clips() -> int:
@@ -121,6 +142,7 @@ class Worker:
         self.repo.migrate()
         self.repo.reset_stale_running()
         self.repo.reset_stale_extract()
+        self.seed_muster()
 
         erledigt = 0
         LOG.info(
@@ -171,6 +193,47 @@ class Worker:
 
         self.repo.mark_done(job.id, ziel)
         return True
+
+    # -- Mustertemplates --------------------------------------------------
+
+    def seed_muster(self) -> int:
+        """Legt die Mustertemplates an, falls sie fehlen.
+
+        WARUM ES DAS GIBT: ohne Template zeigt die Oberflaeche nur ein
+        Hinweisfeld, und wer die App zum ersten Mal oeffnet, muss erst ein
+        Video hochladen, um irgendetwas sehen zu koennen. Drei Muster machen
+        aus einer leeren Seite eine benutzbare -- und sie zeigen gleich, was
+        ein Schnitt-Template ueberhaupt ist: eine Liste von Zeitstempeln,
+        keine KI.
+
+        NICHT UEBERSCHREIBEND. Feste ids, und `seed_template` legt nur an,
+        was fehlt. Wer ein Muster umbaut, behaelt seine Fassung ueber jeden
+        Neustart und jedes Upgrade.
+
+        Ein Fehler in EINER Datei darf den Worker nicht am Starten hindern:
+        die Job-Schleife ist wichtiger als drei Beispiele. Deshalb wird je
+        Datei gefangen und mit Metadaten geloggt -- still verschluckt wird
+        nichts.
+        """
+        ordner = muster_ordner()
+        if ordner is None:
+            LOG.warning("kein examples-Ordner gefunden, keine Mustertemplates")
+            return 0
+
+        angelegt = 0
+        for datei in sorted(ordner.glob("muster-*.json")):
+            try:
+                vorlage = CutTemplate.from_json(json.loads(datei.read_text(encoding="utf-8")))
+                if self.repo.seed_template(vorlage):
+                    angelegt += 1
+            except Exception as exc:  # noqa: BLE001 - ein Beispiel darf nicht den Start kosten
+                LOG.exception(
+                    "Mustertemplate uebersprungen",
+                    extra={"datei": str(datei), "grund": f"{type(exc).__name__}: {exc}"},
+                )
+        if angelegt:
+            LOG.info("Mustertemplates angelegt", extra={"anzahl": angelegt})
+        return angelegt
 
     # -- Extraktion -------------------------------------------------------
 
