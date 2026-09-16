@@ -3,9 +3,20 @@
 Der letzte Schritt, und der einzige, den kein Automat übernehmen kann: die
 Box steht im lokalen Netz, die Anmeldung braucht Browser und TOTP.
 
-Stand davor, alles gemessen: Repo öffentlich, Icon HTTP 200, beide
-ghcr-Pakete anonym abrufbar, Images `26.9.1` frisch, Eintrag im Katalog live
-(`marktpruefen.yml` prüft das täglich).
+**Zielversion ist `26.9.2`, und nicht das gelistete `26.9.1`.** Das
+ausgelieferte 26.9.1 rendert den Worker ohne `apiVersion` (gemessen, Begründung
+im README) — es zu installieren wäre ein Fehlschlag mit einer irreführenden
+Meldung. Reihenfolge deshalb:
+
+1. Images `26.9.2` bauen und nach ghcr pushen (ein `v26.9.2`-Tag oder
+   `ci.yml` per Klick mit gesetztem Haken `push_images`)
+2. Anonym prüfen, dass beide Tags da sind — `marktpruefen.yml` tut genau das,
+   und `marktpr.yml` bricht sonst von selbst ab
+3. Installieren und `running` messen (dieses Dokument)
+4. **Erst danach** der Katalogeintrag auf 26.9.2
+
+Stand davor, gemessen: Repo öffentlich, Icon HTTP 200, beide ghcr-Pakete
+anonym abrufbar (für 26.9.1; 26.9.2 ist noch nicht gebaut).
 
 ## 1. Ist move angekommen
 
@@ -46,7 +57,9 @@ kubectl get pods -n move-<nutzer> \
 ```
 
 Erwartet: zwei Pods, `move` und `moveworker`, beide `true`, beide auf
-`ghcr.io/ska1walker/…:26.9.1`.
+`ghcr.io/ska1walker/…:26.9.2`. Steht dort `26.9.1`, ist nicht die Version
+gelaufen, die hier gemeint ist — dann hat die Box aus dem Katalog geholt, nicht
+aus dem neuen Paket.
 
 Die Adresse ist `https://3734a903<index>.<nutzer>.<zone>` — `3734a903` ist
 `md5("move")[:8]`. Nicht selbst ausrechnen, sondern nachsehen:

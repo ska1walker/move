@@ -21,7 +21,7 @@ scripts/check-chart.sh         Vorab-Guards, aus dem Insilo-Original umgebaut
 scripts/make-icon.py           erzeugt icon.png reproduzierbar, ohne Bildbibliothek
 icon.png                       512x512, Hanseatenblau + Gold
 OlaresManifest.yaml            Root-Manifest (Store)
-move/Chart.yaml                Version 26.9.1
+move/Chart.yaml                Version 26.9.2
 move/OlaresManifest.yaml       Chart-Manifest, byteweise identisch zum Root
 move/values.yaml               keine Pins, keine Secrets
 move/values-olares-stub.yaml   Stub für helm lint/template
@@ -43,8 +43,8 @@ Beide Images bauen mit dem **Repo-Wurzelverzeichnis** als Kontext, weil
 `db/schema.sql` von Web und Worker gemeinsam gelesen wird:
 
 ```bash
-docker build -f worker/Dockerfile -t moveworker:26.9.1 .
-docker build -f web/Dockerfile    -t move:26.9.1 .
+docker build -f worker/Dockerfile -t moveworker:26.9.2 .
+docker build -f web/Dockerfile    -t move:26.9.2 .
 ```
 
 Chart-Stand: ein Entrance auf `move` (Port 3000), Worker `moveworker` ohne
@@ -60,9 +60,37 @@ Image-Tags aus `.Chart.AppVersion`, kein GPU-Bedarf in v0.
 | Installation auf der Box, `running` gemessen | Der letzte Schritt, und keiner, den ein Automat nimmt. Ablauf in `docs/installieren.md`. |
 
 Erledigt und gemessen: Repo öffentlich (Icon HTTP 200), beide ghcr-Pakete
-anonym abrufbar, Images `26.9.1` frisch, Eintrag im Katalog live
-(`marktpruefen.yml` prüft täglich), `docs/olares-learnings.md` und
-`docs/design-guide.md` liegen vor.
+anonym abrufbar, `docs/olares-learnings.md` und `docs/design-guide.md` liegen
+vor.
+
+### Der Katalog steht auf 26.9.1, und dieses 26.9.1 ist kaputt
+
+Das Chart, das gerade in Marcs Katalog liegt, **lässt sich nicht
+installieren**. Nachgemessen, nicht vermutet: `git archive 9268b3b` (der
+Stand, aus dem das ausgelieferte Paket entstand) mit echtem helm gerendert
+ergibt drei Dokumente, und das dritte ist
+
+```
+apiVersion=None    kind=Deployment    name=moveworker
+```
+
+Eine rechte Trimm-Marke (`-}}`) an einer Zuweisung fraß den Zeilenumbruch
+danach, und `apiVersion: apps/v1` klebte an das Ende der Kommentarzeile
+darüber. Gültiges YAML, deshalb hat niemand gemeckert — helm nicht, `chart
+lint` nicht, der Katalog nicht. Die API hätte es abgelehnt.
+
+**26.9.2 behebt genau das.** Stand der drei Teile, getrennt gemeldet:
+
+| | Stand |
+|---|---|
+| Chart 26.9.2 | gepackt, `helm template` rendert 3 Dokumente, `apiVersion` 3 == `kind` 3 |
+| Images `26.9.2` auf ghcr | **fehlen** — der Push läuft nur auf einem `v*`-Tag oder per Klick |
+| Katalogeintrag | steht auf 26.9.1, also auf dem kaputten Chart |
+
+In dieser Reihenfolge, und nicht anders: Images bauen, auf der Box
+installieren und `running` **messen**, erst dann der Katalogeintrag.
+`marktpr.yml` prüft seit dem Image-Schritt selbst, dass die Tags existieren,
+und bricht sonst ab, bevor etwas gelistet wird.
 
 ## Wie eine App auf die Box kommt — drei Wege
 
@@ -173,7 +201,7 @@ Weil eine App nicht dadurch in den Marktplatz kommt, dass sie hier im Repo
 liegt. Eine **Market Source ist ein eigener Webdienst** (bei AImighty:
 Cloudflare Pages, Repo `bayerhazard/aimighty-market`). Sie listet die App
 unter `/api/v1/appstore/info` und liefert das Chart unter
-`/api/v1/applications/move/chart?fileName=move-26.9.1.tgz`. Das Chart steckt
+`/api/v1/applications/move/chart?fileName=move-26.9.2.tgz`. Das Chart steckt
 dort als base64 in einer Tabelle. In **move ist noch nichts davon eingetragen** —
 dieses Repo enthält nur das Chart selbst.
 
@@ -185,8 +213,8 @@ dieses Repo enthält nur das Chart selbst.
 
 | Datei | wohin |
 |---|---|
-| `dist/move-26.9.1.tgz` | das gepackte Chart |
-| `dist/move-26.9.1.tgz.base64` | eine Zeile, als Wert unter dem Schlüssel `"move-26.9.1.tgz"` |
+| `dist/move-26.9.2.tgz` | das gepackte Chart |
+| `dist/move-26.9.2.tgz.base64` | eine Zeile, als Wert unter dem Schlüssel `"move-26.9.2.tgz"` |
 | `dist/markteintrag.json` | die Metadatenfelder, aus dem Manifest gelesen |
 
 Der CI-Job **Chart-Paket** führt das bei jedem Push mit echtem Helm aus und
