@@ -10,7 +10,8 @@ MP4, ohne einen einzigen KI-Aufruf. Beide Images bauen in CI. Auf der Box war
 noch nichts installiert — `running` ist nicht gemessen.
 
 Das Repo ist öffentlich, damit die `icon.png`-URL im Manifest auflöst
-(gemessen: HTTP 200, 512×512 PNG). Die ghcr-Pakete sind es noch nicht.
+(gemessen: HTTP 200, 512×512 PNG). Die ghcr-Pakete sind es ebenfalls — beide
+Images sind anonym ziehbar, geprüft für jeden gelisteten Tag.
 
 ## Was drin ist
 
@@ -63,7 +64,7 @@ Erledigt und gemessen: Repo öffentlich (Icon HTTP 200), beide ghcr-Pakete
 anonym abrufbar, `docs/olares-learnings.md` und `docs/design-guide.md` liegen
 vor.
 
-### Drei Versionen, zwei Fehlschläge, drei Guards
+### Drei Versionen, zwei Fehlschläge, vier Guards
 
 Zwei Dinge haben verhindert, dass move auf einer Box läuft. Beide waren
 gültiges YAML, beide kamen durch `chart lint`, beide standen im Katalog.
@@ -98,12 +99,12 @@ jetzt korrigiert.
 
 | | Stand |
 |---|---|
-| Chart 26.9.3 | gepackt (8537 Byte); `type: system` im Paket, Render 3 Dokumente, alle mit `apiVersion` und `kind` |
+| Chart 26.9.3 | ausgeliefert: HTTP 200, 8539 Byte, einmal gzippt, `type: system` drin, Render 3 Dokumente alle mit `apiVersion` und `kind` |
 | Images `26.9.3` auf ghcr | da, anonym HTTP 200 |
-| Katalogeintrag | steht auf **26.9.2**, also auf dem Chart, das die Box ablehnt — **absichtlich**, bis `running` gemessen ist |
-| `running` auf der Box | **nicht gemessen** — Weg B in `docs/installieren.md` |
+| Katalogeintrag | **26.9.3**, live gemessen (PR #73), Hash bewegt auf `c76829f5…` |
+| `running` auf der Box | **nicht gemessen** — Weg A in `docs/installieren.md` |
 
-Drei Guards sind daraus entstanden, jeder dort, wo der Fehler durchkam:
+Vier Guards sind daraus entstanden, jeder dort, wo der Fehler durchkam:
 
 - `check-chart.sh` verlangt `type: system` an der olares-Abhängigkeit. Er liest
   dabei nur den Block dieser einen Abhängigkeit — die erste Fassung lief in den
@@ -115,10 +116,17 @@ Drei Guards sind daraus entstanden, jeder dort, wo der Fehler durchkam:
   und `kind` je Dokument. Entpacken und `grep` allein haben 26.9.1
   durchgelassen. Geprüft wird jetzt, was der Katalog herausgibt, nicht was im
   Repo steht.
+- `marktpruefen.yml` prüft zusätzlich `type: system` **im ausgelieferten
+  Manifest**. Der Render-Test allein sieht das Feld nicht — 26.9.2 hätte ihn
+  bestanden und wurde von der Box trotzdem abgelehnt.
 
-Die Reihenfolge aus CLAUDE.md gilt weiter und wurde bei 26.9.2 verletzt: Images
-bauen → installieren und `running` **messen** → erst dann der Katalog. Bei
-26.9.3 wird sie eingehalten.
+Die Reihenfolge aus CLAUDE.md wurde bei 26.9.2 **und** 26.9.3 verletzt: Images
+bauen → installieren und `running` **messen** → erst dann der Katalog. Beide
+Male auf ausdrückliche Ansage, beide Male mit derselben Begründung — der
+gelistete Vorgänger war nicht installierbar, also ist die neue Version in
+jedem Zustand besser als der Status quo. Die Regel bleibt trotzdem richtig und
+die Messung offen: die vier Guards oben ersetzen sie nicht. Keiner von ihnen
+sieht, ob ein Pod `running` erreicht.
 
 ## Wie eine App auf die Box kommt — drei Wege
 

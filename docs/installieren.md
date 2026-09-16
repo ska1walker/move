@@ -14,6 +14,11 @@ alle Namen waren richtig, `chart lint` sagte nichts. Belegt am Katalog: 21 von
 21 installierenden Charts dort tragen das Feld, die einzigen beiden ohne waren
 move 26.9.1 und 26.9.2. `check-chart.sh` prüft es jetzt.
 
+Katalog, Chart und Images tragen 26.9.3, alles live gemessen: Chart HTTP 200
+(8539 Byte), `type: system` im ausgelieferten Manifest, Render 3 Dokumente alle
+mit `apiVersion`, beide Images anonym HTTP 200, Hash bewegt auf `c76829f5…`.
+**Weg A** unten gilt also.
+
 Damit ist dieses Dokument der einzige noch offene Schritt.
 
 ## 1. Welcher Weg — das entscheidet der Katalog, nicht die Gewohnheit

@@ -89,6 +89,30 @@ jobs:
             || { echo "Im ausgelieferten Manifest fehlt der envs-Block."; exit 1; }
           echo "envs-Block ist drin."
 
+          # type: system an der olares-Abhaengigkeit. Ohne das Feld lehnt die
+          # Box mit "Incompatible with this Olares version" ab -- gemessen an
+          # move 26.9.2, und der Katalog sah dabei vollkommen gesund aus:
+          # Version richtig, envs-Block da, Chart entpackt sauber.
+          #
+          # Geprueft wird der Block AB der olares-Zeile bis zum naechsten
+          # Listeneintrag oder Schluessel der obersten Ebene -- sonst zaehlt
+          # das type: password von FAL_KEY aus dem envs-Block mit. Genau
+          # diesen Fehler hatte die erste Fassung des Guards in
+          # check-chart.sh.
+          typ="$(tar -xzOf chart.tgz move/OlaresManifest.yaml | awk '
+            /^[[:space:]]*-[[:space:]]*name:[[:space:]]*olares[[:space:]]*$/ { f=1; next }
+            f && /^[^[:space:]]/ { exit }
+            f && /^[[:space:]]*-/ { exit }
+            f && /^[[:space:]]*type:/ { gsub(/.*type:[[:space:]]*/,""); gsub(/["'"'"']/,""); print; exit }
+          ')"
+          if [ "$typ" = "system" ]; then
+            echo "olares-Dependency traegt type: system."
+          else
+            echo "Im ausgelieferten Manifest fehlt 'type: system' an der olares-Dependency (gefunden: '${typ:-nichts}')."
+            echo "Die Box lehnt das mit 'Incompatible with this Olares version' ab."
+            exit 1
+          fi
+
       - name: Das AUSGELIEFERTE Chart rendern
         # DIE LUECKE, DIE 26.9.1 DURCHGELASSEN HAT. Bis hierher wurde das
         # Chart nur entpackt und durchsucht -- entpacken und grep sehen aber
