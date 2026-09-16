@@ -84,6 +84,21 @@ spec:
           volumeMounts:
             - name: appdata
               mountPath: /app/data
+          # 1 GiB Limit, und das ist eine Entscheidung, nicht die Vorgabe.
+          #
+          # docs/olares-learnings.md 11 warnt ausdruecklich davor: "Ein
+          # Frontend mit 1 GiB lief bei einem 600-MB-Upload auf 798 MB" --
+          # also knapp unter dem OOM-Kill. Die Zahl gilt aber fuer den
+          # fetch/undici-Weg. Genau den nimmt move nicht: der Upload laeuft
+          # als Readable.fromWeb(request.body) -> stream/promises.pipeline ->
+          # http.request. Dieselbe Messung im Dokument nennt den Unterschied
+          # mit +457-526 MB RSS gegenueber +57-85 MB; moves eigener Lauf gegen
+          # 400 MB lag bei 104-129 MB RSS.
+          #
+          # 1 GiB ist damit etwa Faktor 8 Luft, nicht 25 Prozent. Wer hier
+          # doch einmal OOM sieht, hat nicht zu wenig Speicher, sondern
+          # irgendwo im Upload-Pfad wieder fetch -- dann dort suchen, nicht
+          # das Limit anheben. Das Limit ist der Melder.
           resources:
             requests:
               cpu: 200m

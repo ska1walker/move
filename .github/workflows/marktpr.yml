@@ -120,6 +120,51 @@ jobs:
       - name: Chart packen
         run: ./scripts/paket.sh
 
+      - name: Images muessen existieren
+        # STEHT HIER UND NICHT SPAETER, weil ein Merge in Marcs Repo bereits
+        # der Deploy ist (deploy.yml, on: push: branches: [main]). Ein Eintrag
+        # mit einem Image-Tag, den es nicht gibt, ist ab diesem Moment live
+        # und auf jeder Box installierbar -- sie scheitert dann in
+        # registry_error.
+        #
+        # Genau dieser Ausfall ist in docs/olares-learnings.md 7 gemessen:
+        # "ein Katalog listete eine Version zwei Tage lang, alle Images gaben
+        # 404". Die Checkliste in 15 zieht daraus die Konsequenz und setzt
+        # "Image-Tags existieren und sind oeffentlich" VOR das Release, nicht
+        # dahinter.
+        #
+        # marktpruefen.yml prueft dasselbe -- aber taeglich und im Nachhinein.
+        # Das findet den Fehler, dieser Schritt verhindert ihn. Beide bleiben.
+        #
+        # Anonym abgefragt, und das ist Absicht: es prueft in einem Zug, dass
+        # der Tag da ist UND dass das Paket oeffentlich ist. Ein Token wuerde
+        # ein privat gewordenes Paket gruen aussehen lassen, und die Box hat
+        # keins.
+        run: |
+          v="$(grep -E '^version:' move/Chart.yaml | awk '{print $2}')"
+          echo "Chart-Version: $v"
+          fehlt=0
+          for img in move moveworker; do
+            tok="$(curl -sS --max-time 20 \
+              "https://ghcr.io/token?scope=repository:ska1walker/$img:pull&service=ghcr.io" \
+              | python3 -c 'import json,sys; print(json.load(sys.stdin).get("token",""))')"
+            code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 \
+              -H "Authorization: Bearer $tok" \
+              -H 'Accept: application/vnd.oci.image.manifest.v1+json,application/vnd.docker.distribution.manifest.v2+json' \
+              "https://ghcr.io/v2/ska1walker/$img/manifests/$v")"
+            echo "  ghcr.io/ska1walker/$img:$v -> HTTP $code"
+            [ "$code" = "200" ] || fehlt=1
+          done
+          if [ "$fehlt" -ne 0 ]; then
+            echo
+            echo "Abgebrochen, BEVOR etwas im Katalog steht."
+            echo "Entweder ist release.yml fuer $v nicht durchgelaufen,"
+            echo "oder ein Paket ist wieder privat:"
+            echo "  https://github.com/users/ska1walker/packages/container/move/settings"
+            exit 1
+          fi
+          echo "Beide Images sind anonym abrufbar."
+
       - name: Weg bestimmen und Branch anlegen
         # ZWEI WEGE, und welcher gilt, haengt am Token -- nicht an einer
         # Vereinbarung. Deshalb wird es GEFRAGT statt angenommen:

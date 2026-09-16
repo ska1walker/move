@@ -85,6 +85,38 @@ jobs:
             || { echo "Im ausgelieferten Manifest fehlt der envs-Block."; exit 1; }
           echo "envs-Block ist drin."
 
+      - name: Images
+        # Nach docs/olares-learnings.md 7: "Vor jeder Listung pruefen, dass
+        # jeder Image-Tag existiert -- ein Katalog listete eine Version zwei
+        # Tage lang, alle Images gaben 404."
+        #
+        # Anonym abgefragt, und das prueft zwei Dinge auf einmal: dass der
+        # Tag da ist UND dass das Paket oeffentlich geblieben ist. Ein privat
+        # gewordenes Paket endet auf der Box in registry_error, und der
+        # Katalog sieht dabei vollkommen gesund aus.
+        run: |
+          v="${{ steps.v.outputs.version }}"
+          fehlt=0
+          for img in move moveworker; do
+            tok="$(curl -sS --max-time 20 \
+              "https://ghcr.io/token?scope=repository:ska1walker/$img:pull&service=ghcr.io" \
+              | python3 -c 'import json,sys; print(json.load(sys.stdin).get("token",""))')"
+            code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 \
+              -H "Authorization: Bearer $tok" \
+              -H 'Accept: application/vnd.oci.image.manifest.v1+json,application/vnd.docker.distribution.manifest.v2+json' \
+              "https://ghcr.io/v2/ska1walker/$img/manifests/$v")"
+            echo "ghcr.io/ska1walker/$img:$v -> HTTP $code"
+            [ "$code" = "200" ] || fehlt=1
+          done
+          if [ "$fehlt" -ne 0 ]; then
+            echo
+            echo "Mindestens ein Image ist anonym NICHT abrufbar."
+            echo "Entweder fehlt der Tag, oder das Paket ist wieder privat:"
+            echo "  https://github.com/users/ska1walker/packages/container/move/settings"
+            echo "Auf der Box heisst das registry_error."
+            exit 1
+          fi
+
       - name: Hash
         # Der Katalog-Hash entsteht aus ID:name:version. Bewegt er sich nicht,
         # synchronisiert Olares nicht -- die App waere zwar da, aber keine Box

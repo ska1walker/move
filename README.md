@@ -76,9 +76,18 @@ Nach `docs/olares-learnings.md` 9.1, auf einer echten Box gemessen:
 
 Ich hatte hier einen Widerspruch zwischen insilos und beacons Doku stehen
 lassen und vermutet, es liege an den zwei Schritten. Das gemessene Dokument
-sagt es ohne Vermutung: der Upload ist ein **Entwicklungsweg**, kein
-Deployment. Für moves erste Messung taugt er damit — für die Auslieferung
-nicht.
+klärt die **Wirkung**: der Upload registriert eine Version und ersetzt kein
+Deployment, ist also ein Entwicklungsweg. Für moves erste Messung taugt er
+damit, für die Auslieferung nicht.
+
+Die **Ursache** klärt es nicht, und ich hatte hier „ohne Vermutung"
+geschrieben. Das war zu viel. `docs/olares-learnings.md` 16 führt den
+Upload-Pfad selbst als offene Frage 5: früh als Sackgasse beschrieben (kein
+CR, kein `ns-owner`), später funktionierend, *„die Ursache der frühen
+Fehlschläge ist nicht sauber getrennt."* Praktische Folge für move: schlägt
+`market upload` fehl, ist die Fehlermeldung nicht gedeutet — dann zählt der
+Weg über die Market Source, der ohnehin der vorgesehene ist, und nicht das
+Debuggen des Uploads.
 
 **Nach dem Merge ist nichts ausgerollt.** Die Kette laut 9.2: Edge 1–2 min →
 Box pollt bis 5 min → Update erscheint → **ein Mensch drückt „Upgrade"** →
@@ -342,8 +351,19 @@ Generator auf, überspringt den Guard aber sauber, solange er fehlt.
 
 ## Erste Schritte
 
-1. Knotenzahl und GPU-Belegung messen — die beiden Referenzdokumente
-   widersprechen sich (ein Knoten oder zwei):
+1. Knotenzahl und GPU-Belegung messen. Der Widerspruch, der hier stand, ist
+   weitgehend aufgelöst: `docs/olares-learnings.md` 1 sagt im ersten Satz
+   *„Olares ist **Kubernetes (k3s) auf einem Knoten**"*, und bei Widerspruch
+   gewinnt dieses Dokument. AGENTS.md beschreibt mit den zwei Nodes zudem
+   **Marcs** Umgebung, nicht die Box, auf der move läuft — es müssen also
+   nicht beide falsch sein.
+
+   Damit hat die offene Frage eine Vorgabe statt einer Münze: **kein
+   `nodeSelector`**, und der Worker konkurriert direkt mit den LLM-Apps um die
+   GPU. Beides ist im Chart schon so gebaut (kein `nodeSelector`,
+   `MOVE_QUEUE_CONCURRENCY` fest auf `1`).
+
+   Nachmessen bleibt trotzdem der Schritt, nicht das Dokument lesen:
 
    ```bash
    ssh olares@<box>
@@ -352,10 +372,9 @@ Generator auf, überspringt den Guard aber sauber, solange er fehlt.
    olares-cli settings compute list
    ```
 
-   Das Ergebnis entscheidet, ob der Worker einen `nodeSelector` bekommt.
-
-   Für v0 ist das noch nicht dringend: das Chart fordert **keine GPU** an, der
-   Worker rechnet auf der CPU. Die Frage wird erst bei TransNetV2 scharf.
+   Für v0 ist es ohnehin nicht dringend: das Chart fordert **keine GPU** an,
+   der Worker rechnet auf der CPU. Scharf wird die Frage erst bei TransNetV2 —
+   und dann als GPU-Belegung, nicht als Knotenzahl.
 
 2. `./scripts/check-chart.sh` laufen lassen. Der Guard kommt vor dem Fix.
 
@@ -374,7 +393,14 @@ Generator auf, überspringt den Guard aber sauber, solange er fehlt.
 4. Worker-Image: steht. Es bringt ffmpeg **mit `drawtext`** und eine
    Schriftdatei mit; ohne beides gibt es keine Platzhalter.
 
-5. Upload-Pfad: steht, gegen 400 MB gemessen. Siehe `web/README.md`.
+5. Upload-Pfad: steht, gegen 400 MB gemessen — **lokal**, nicht über die
+   Entrance-Adresse. Die vier Fallstricke aus CLAUDE.md sind damit belegt
+   (Middleware, `http.request` statt `fetch`, `requestTimeout`, `$HOSTNAME`).
+   Was die Eingangsschicht durchlässt, ist es nicht: `docs/olares-learnings.md`
+   16 nennt als offene Frage 2, dass alle dortigen Upload-Messungen per
+   Port-Forward an Envoy vorbeiliefen und nur **10 MB** durch die
+   Eingangsschicht belegt sind. Siehe `web/README.md` und
+   `docs/installieren.md` 4.
 
 6. Extraktion: steht. `scdet` statt TransNetV2 (der v0-Scope verlangt „ohne
    einen einzigen KI-Aufruf"), librosa für das Beat-Grid.
