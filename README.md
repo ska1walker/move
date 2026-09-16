@@ -91,8 +91,7 @@ GPU-Zeit und Trainingsdaten.
 | | Woher |
 |---|---|
 | erster echter fal-Aufruf | Die Generierung ist gebaut und gegen ein Doppel getestet, aber nie gegen fal gelaufen. fal.ai und docs.fal.ai sind vom Proxy gesperrt. **Konkret unbelegt: die Argumentnamen** `image_url` und `seed` — begründete Annahme, kein gemessenes Schema. Passen sie nicht, scheitert der Job mit der vollständigen Antwort in `render_job.error`, und `MOVE_FAL_BILD_ARGUMENT` bzw. `MOVE_FAL_SEED_ARGUMENT` korrigieren es ohne neues Image. |
-| `running` auf der Box | **26.9.3 läuft dort** — also ohne Upload, Extraktion und Figuren. Auf der Box passiert nichts von selbst: nach §9.2 drückt ein Mensch „Upgrade". |
-| 26.9.5 ausgerollt | gepackt und geprüft, Images und Katalog folgen mit dem nächsten Lauf. Im Katalog liegt 26.9.4 (live gemessen: Chart HTTP 200/8987 Byte, `type: system`, Render 3 Dokumente, Images anonym 200, Hash `e382ed14…`). |
+| `running` auf der Box | **26.9.3 läuft dort** — also ohne Upload, Extraktion und Figuren, und mit dem Autofill-Fehler im Namensfeld. Auf der Box passiert nichts von selbst: nach §9.2 drückt ein Mensch „Upgrade". |
 
 Erledigt und gemessen: Repo öffentlich (Icon HTTP 200), beide ghcr-Pakete
 anonym abrufbar, `docs/olares-learnings.md` und `docs/design-guide.md` liegen
@@ -133,10 +132,9 @@ jetzt korrigiert.
 
 | | Stand |
 |---|---|
-| Chart im Katalog | **26.9.4** ausgeliefert: HTTP 200, 8987 Byte, einmal gzippt, `type: system` drin, Render 3 Dokumente alle mit `apiVersion` und `kind` |
-| Images auf ghcr | 26.9.1 bis 26.9.4, alle anonym HTTP 200 |
-| Katalogeintrag | 26.9.4, live gemessen (PR #75), Hash `e382ed14…` |
-| Chart 26.9.5 | gepackt und geprüft, noch nicht veröffentlicht |
+| Chart im Katalog | **26.9.5** ausgeliefert: HTTP 200, 9463 Byte, einmal gzippt, `type: system` drin, Render 3 Dokumente alle mit `apiVersion` und `kind` |
+| Images auf ghcr | 26.9.1 bis 26.9.5, alle anonym HTTP 200 |
+| Katalogeintrag | 26.9.5, live gemessen (PR #77), Hash `98a16f17…` |
 | `running` auf der Box | **nicht gemessen** — Weg A in `docs/installieren.md` |
 
 Vier Guards sind daraus entstanden, jeder dort, wo der Fehler durchkam:
