@@ -80,6 +80,40 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Token pruefen
+        # Frueh und mit Klartext-Befund. Ohne diesen Schritt zeigte sich ein
+        # ungueltiges Token erst beim Push, als
+        #   "remote: Invalid username or token"
+        # -- und davor hatte die Rechteabfrage stillschweigend `false`
+        # geliefert, also den Fork-Weg gewaehlt. Zwei Fehlbilder aus einer
+        # Ursache. Wer wissen will, WARUM, braucht es hier.
+        if: ${{ inputs.trockenlauf == false }}
+        env:
+          GH_TOKEN: ${{ secrets.MARKT_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "Das Secret MARKT_TOKEN ist nicht gesetzt."
+            echo "Settings -> Secrets and variables -> Actions -> MARKT_TOKEN"
+            exit 1
+          fi
+
+          if ! wer="$(gh api user --jq .login 2>&1)"; then
+            echo "Das Token wird von GitHub ABGELEHNT. Antwort:"
+            echo "  $wer"
+            echo
+            echo "Haeufigste Ursachen, in dieser Reihenfolge:"
+            echo "  - abgelaufen oder widerrufen"
+            echo "  - beim Einfuegen verstuemmelt (Leerzeichen, Zeilenumbruch)"
+            echo "  - ein feingranulares Token ohne Zugriff auf diese Repos"
+            exit 1
+          fi
+          echo "Token gehoert zu: $wer"
+
+          for r in bayerhazard/aimighty-market ska1walker/aimighty-market; do
+            p="$(gh api "repos/$r" --jq '.permissions.push // false' 2>/dev/null || echo "kein Zugriff")"
+            echo "  Schreibrecht auf $r: $p"
+          done
+
       - name: PyYAML
         run: python3 -m pip install --quiet pyyaml
 
