@@ -412,3 +412,65 @@ pre {
   font-size: 0.8125rem;
   margin: 0;
 }
+
+/* Aufklappbare Hinweise.
+ *
+ * Ein details/summary statt eines Dauertextes: die Anleitung, wie ein
+ * Referenzbild aussehen soll, ist beim zweiten Mal im Weg. Zugeklappt bleibt
+ * genau eine Zeile stehen.
+ *
+ * Kein eigenes Dreieck gebaut -- das des Browsers reicht, und ein Icon waere
+ * nach dem Design-Guide ein Vektor oder gar nichts. Die Trefferflaeche der
+ * Zusammenfassung erfuellt --am-ziel-beruehrung, sonst ist sie auf dem Handy
+ * nicht sicher zu treffen.
+ */
+details {
+  border: 1px solid var(--am-rand);
+  padding: var(--am-raum-3) var(--am-raum-4);
+}
+
+details > summary {
+  cursor: pointer;
+  color: var(--am-text-gedaempft);
+  font-size: 0.875rem;
+  /* Die Zeile selbst ist das Ziel, nicht nur der Text darin. */
+  display: flex;
+  align-items: center;
+  min-height: var(--am-ziel-beruehrung);
+}
+
+details > summary:focus-visible {
+  outline: var(--am-rand-betont) solid var(--am-fokus-ring);
+  outline-offset: var(--am-raum-1);
+}
+
+details[open] > summary {
+  margin-bottom: var(--am-raum-3);
+  border-bottom: 1px solid var(--am-rand);
+  padding-bottom: var(--am-raum-3);
+}
+
+details p {
+  margin: 0 0 var(--am-raum-3);
+  font-size: 0.875rem;
+  color: var(--am-text-sekundaer);
+}
+
+details p:last-child {
+  margin-bottom: 0;
+}
+
+details ul {
+  margin: 0 0 var(--am-raum-3);
+  padding-left: var(--am-raum-5);
+  font-size: 0.875rem;
+  color: var(--am-text-sekundaer);
+}
+
+details li {
+  margin-bottom: var(--am-raum-1);
+}
+
+details strong {
+  color: var(--am-text-primaer);
+}

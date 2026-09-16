@@ -23,7 +23,10 @@ import { hochladen } from './hochladen';
 export default function VideoQuelle() {
   const router = useRouter();
   const datei = useRef<HTMLInputElement>(null);
-  const [name, setName] = useState('');
+  // Unkontrolliert mit Ref, aus demselben Grund wie in Figuren.tsx: ein Feld
+  // mit dem Label "Name" ist ein Autofill-Ziel, und Autofill loest kein
+  // React-onChange aus. Der Wert stand dann im DOM und der State war leer.
+  const nameFeld = useRef<HTMLInputElement>(null);
   const [laeuft, setLaeuft] = useState(false);
   const [anteil, setAnteil] = useState<number | null>(null);
   const [meldung, setMeldung] = useState<string | null>(null);
@@ -45,10 +48,11 @@ export default function VideoQuelle() {
       const upload = await hochladen(gewaehlt, setAnteil);
       setAnteil(null);
 
+      const gewuenschterName = (nameFeld.current?.value ?? '').trim();
       const antwort = await fetch('/api/extractions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ upload_id: upload.id, name: name.trim() || upload.name }),
+        body: JSON.stringify({ upload_id: upload.id, name: gewuenschterName || upload.name }),
       });
       const daten = (await antwort.json()) as { id?: string; fehler?: string };
       if (!antwort.ok || !daten.id) {
@@ -60,7 +64,7 @@ export default function VideoQuelle() {
           `Extraktion ${daten.id} eingereiht — der Worker holt sie in wenigen Sekunden.`,
       );
       if (datei.current) datei.current.value = '';
-      setName('');
+      if (nameFeld.current) nameFeld.current.value = '';
       router.refresh();
     } catch (e) {
       setFehler(e instanceof Error ? e.message : String(e));
@@ -87,11 +91,11 @@ export default function VideoQuelle() {
         <span>Name für das Template (leer: Dateiname)</span>
         <input
           id="templatename"
+          ref={nameFeld}
           type="text"
-          value={name}
+          autoComplete="off"
           disabled={laeuft}
           placeholder="z. B. Trailer, harte Schnitte"
-          onChange={(e) => setName(e.target.value)}
         />
       </label>
 

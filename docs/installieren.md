@@ -3,23 +3,18 @@
 Der letzte Schritt, und der einzige, den kein Automat übernehmen kann: die
 Box steht im lokalen Netz, die Anmeldung braucht Browser und TOTP.
 
-**Zielversion ist `26.9.4`.** Sie behebt den Fehlschlag, den 26.9.2 auf der
-Box zeigte:
+**Zielversion ist `26.9.5`.** Woher die Sprünge kommen, kurz:
 
-> Incompatible with this Olares version
+| Version | Was sie behebt |
+|---|---|
+| 26.9.2 | Worker rendert ohne `apiVersion` — nicht installierbar |
+| 26.9.3 | fehlendes `type: system` — Box lehnt mit *„Incompatible with this Olares version"* ab |
+| 26.9.4 | Oberfläche konnte nichts: kein Upload, keine Extraktion, keine Figuren |
+| 26.9.5 | Namensfeld verschluckte die Eingabe (Autofill), plus Hinweise zum Referenzbild |
 
-Die Meldung zeigt auf die Version und meinte ein fehlendes Feld: der
-olares-Abhängigkeit fehlte `type: system`. Der Pin `>=1.12.6-0` war richtig,
-alle Namen waren richtig, `chart lint` sagte nichts. Belegt am Katalog: 21 von
-21 installierenden Charts dort tragen das Feld, die einzigen beiden ohne waren
-move 26.9.1 und 26.9.2. `check-chart.sh` prüft es jetzt.
-
-Katalog, Chart und Images tragen 26.9.4, alles live gemessen: Chart HTTP 200
-(8539 Byte), `type: system` im ausgelieferten Manifest, Render 3 Dokumente alle
-mit `apiVersion`, beide Images anonym HTTP 200, Hash bewegt auf `c76829f5…`.
-**Weg A** unten gilt also.
-
-Damit ist dieses Dokument der einzige noch offene Schritt.
+**Der Tabelle unten folgen, nicht dieser Zeile:** welche Version im Katalog
+liegt, ändert sich schneller als dieses Dokument. `market get` fragen und
+Schritt 1 entscheiden lassen.
 
 ## 1. Welcher Weg — das entscheidet der Katalog, nicht die Gewohnheit
 
@@ -37,8 +32,9 @@ olares-cli market get move -s market.AImighty
 
 **Niemals eine ältere Version installieren, nur weil sie dasteht.** move 26.9.1
 rendert den Worker ohne `apiVersion`, 26.9.2 wird mit *„Incompatible with this
-Olares version"* abgelehnt. Beide sind gültiges YAML und sehen im Katalog
-gesund aus.
+Olares version"* abgelehnt — beide sind gültiges YAML und sehen im Katalog
+gesund aus. 26.9.3 installiert, kann aber in der Oberfläche nichts außer
+Anzeigen.
 
 Der Grund, dass Weg B überhaupt existiert: CLAUDE.md verlangt *„installieren
 und `running` messen, erst dann in den Katalog"*. Eine Version, die noch nicht
@@ -111,7 +107,7 @@ kubectl get pods -n move-<nutzer> \
 ```
 
 Erwartet: zwei Pods, `move` und `moveworker`, beide `true`, beide auf
-`ghcr.io/ska1walker/…:26.9.4`. Steht dort eine ältere Version, ist nicht die
+`ghcr.io/ska1walker/…:26.9.5`. Steht dort eine ältere Version, ist nicht die
 gelaufen, die hier gemeint ist — zurück zu Schritt 1, nicht weitermachen.
 
 Die Adresse ist `https://3734a903<index>.<nutzer>.<zone>` — `3734a903` ist
@@ -158,7 +154,7 @@ Vier Dinge stehen im Repo als unverifiziert und entscheiden sich hier:
 | 401 `ext_authz_denied` | ein Aufruf auf die eigene Entrance-Adresse aus dem Pod. Die Server-Komponente liest direkt aus `lib/daten.ts`, genau deshalb |
 | Pods laufen, aber mit altem Image | Werte-Einfrieren beim Upgrade. Bei einer Erstinstallation ausgeschlossen |
 | `downloadFailed` ohne Retry | Grund steht in `kubectl logs -n os-framework app-service-0` |
-| „Incompatible with this Olares version" | **Nicht die Version.** Der olares-Abhängigkeit fehlt `type: system` (in 26.9.2 gemessen). Seit 26.9.4 gesetzt, `check-chart.sh` prüft es. Tritt es trotzdem auf: die Box holt noch einen alten Katalogstand — Schritt 1 |
+| „Incompatible with this Olares version" | **Nicht die Version.** Der olares-Abhängigkeit fehlt `type: system` (an 26.9.2 gemessen). Seit **26.9.3** gesetzt, `check-chart.sh` prüft es. Tritt es trotzdem auf: die Box holt noch einen alten Katalogstand — Schritt 1 |
 | „Incompatible with your Olares" (ohne „version") | Andere Ursache: `entrances[].name`/`host` ≠ `metadata.name` ≠ Service ≠ Frontend-Deployment. Bei move sind alle fünf `move`, geprüft |
 
 Zwei Befehle aus `docs/olares-learnings.md` 10, die move konkret braucht.

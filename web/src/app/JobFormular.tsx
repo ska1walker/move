@@ -198,6 +198,7 @@ export default function JobFormular({
             <input
               type="radio"
               name="quelle"
+              autoComplete="off"
               value={wert}
               checked={quelle === wert}
               disabled={wert === 'fal' && !falBereit}
@@ -240,9 +241,16 @@ export default function JobFormular({
                   {e.dauer_ms} ms · {e.shot_scale}
                 </span>
               </label>
+              {/* autoComplete="off" ist hier NICHT Kosmetik: Firefox
+                  stellt Formularwerte beim Neuladen wieder her, ohne ein
+                  React-onChange auszuloesen. Der Text stuende dann im DOM
+                  und der State waere leer -- bei einem Feld, das bezahlte
+                  fal-Aufrufe steuert. Der Zaehler "noch N ohne Beschreibung"
+                  sagte etwas anderes als das, was sichtbar im Feld steht. */}
               <textarea
                 id={`prompt-${e.index}`}
                 rows={2}
+                autoComplete="off"
                 value={prompts[e.index] ?? ''}
                 placeholder="was in dieser Einstellung zu sehen ist"
                 disabled={laeuft}
@@ -288,6 +296,7 @@ export default function JobFormular({
             <input
               id="model"
               type="text"
+              autoComplete="off"
               value={model}
               disabled={laeuft}
               placeholder="fal-ai/…"

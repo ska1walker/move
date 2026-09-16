@@ -22,7 +22,7 @@ scripts/check-chart.sh         Vorab-Guards, aus dem Insilo-Original umgebaut
 scripts/make-icon.py           erzeugt icon.png reproduzierbar, ohne Bildbibliothek
 icon.png                       512x512, Hanseatenblau + Gold
 OlaresManifest.yaml            Root-Manifest (Store)
-move/Chart.yaml                Version 26.9.4
+move/Chart.yaml                Version 26.9.5
 move/OlaresManifest.yaml       Chart-Manifest, byteweise identisch zum Root
 move/values.yaml               keine Pins, keine Secrets
 move/values-olares-stub.yaml   Stub für helm lint/template
@@ -44,8 +44,8 @@ Beide Images bauen mit dem **Repo-Wurzelverzeichnis** als Kontext, weil
 `db/schema.sql` von Web und Worker gemeinsam gelesen wird:
 
 ```bash
-docker build -f worker/Dockerfile -t moveworker:26.9.4 .
-docker build -f web/Dockerfile    -t move:26.9.4 .
+docker build -f worker/Dockerfile -t moveworker:26.9.5 .
+docker build -f web/Dockerfile    -t move:26.9.5 .
 ```
 
 Chart-Stand: ein Entrance auf `move` (Port 3000), Worker `moveworker` ohne
@@ -91,7 +91,8 @@ GPU-Zeit und Trainingsdaten.
 | | Woher |
 |---|---|
 | erster echter fal-Aufruf | Die Generierung ist gebaut und gegen ein Doppel getestet, aber nie gegen fal gelaufen. fal.ai und docs.fal.ai sind vom Proxy gesperrt. **Konkret unbelegt: die Argumentnamen** `image_url` und `seed` — begründete Annahme, kein gemessenes Schema. Passen sie nicht, scheitert der Job mit der vollständigen Antwort in `render_job.error`, und `MOVE_FAL_BILD_ARGUMENT` bzw. `MOVE_FAL_SEED_ARGUMENT` korrigieren es ohne neues Image. |
-| `running` auf der Box für 26.9.4 | **26.9.3 läuft dort.** Katalog, Chart und Images tragen 26.9.4, alles live gemessen (Chart HTTP 200/8987 Byte, `type: system`, Render 3 Dokumente, beide Images anonym 200, Hash `e382ed14…`). Auf der Box passiert davon nichts von selbst: nach §9.2 drückt ein Mensch „Upgrade". Bis dahin läuft dort 26.9.3 weiter — also ohne Upload, Extraktion und Figuren. |
+| `running` auf der Box | **26.9.3 läuft dort** — also ohne Upload, Extraktion und Figuren. Auf der Box passiert nichts von selbst: nach §9.2 drückt ein Mensch „Upgrade". |
+| 26.9.5 ausgerollt | gepackt und geprüft, Images und Katalog folgen mit dem nächsten Lauf. Im Katalog liegt 26.9.4 (live gemessen: Chart HTTP 200/8987 Byte, `type: system`, Render 3 Dokumente, Images anonym 200, Hash `e382ed14…`). |
 
 Erledigt und gemessen: Repo öffentlich (Icon HTTP 200), beide ghcr-Pakete
 anonym abrufbar, `docs/olares-learnings.md` und `docs/design-guide.md` liegen
@@ -132,9 +133,10 @@ jetzt korrigiert.
 
 | | Stand |
 |---|---|
-| Chart 26.9.4 | ausgeliefert: HTTP 200, 8539 Byte, einmal gzippt, `type: system` drin, Render 3 Dokumente alle mit `apiVersion` und `kind` |
-| Images `26.9.4` auf ghcr | da, anonym HTTP 200 |
-| Katalogeintrag | **26.9.4**, live gemessen (PR #73), Hash bewegt auf `c76829f5…` |
+| Chart im Katalog | **26.9.4** ausgeliefert: HTTP 200, 8987 Byte, einmal gzippt, `type: system` drin, Render 3 Dokumente alle mit `apiVersion` und `kind` |
+| Images auf ghcr | 26.9.1 bis 26.9.4, alle anonym HTTP 200 |
+| Katalogeintrag | 26.9.4, live gemessen (PR #75), Hash `e382ed14…` |
+| Chart 26.9.5 | gepackt und geprüft, noch nicht veröffentlicht |
 | `running` auf der Box | **nicht gemessen** — Weg A in `docs/installieren.md` |
 
 Vier Guards sind daraus entstanden, jeder dort, wo der Fehler durchkam:
@@ -153,7 +155,7 @@ Vier Guards sind daraus entstanden, jeder dort, wo der Fehler durchkam:
   Manifest**. Der Render-Test allein sieht das Feld nicht — 26.9.2 hätte ihn
   bestanden und wurde von der Box trotzdem abgelehnt.
 
-Die Reihenfolge aus CLAUDE.md wurde bei 26.9.2 **und** 26.9.4 verletzt: Images
+Die Reihenfolge aus CLAUDE.md wurde bei 26.9.2, 26.9.3 **und** 26.9.4 verletzt: Images
 bauen → installieren und `running` **messen** → erst dann der Katalog. Beide
 Male auf ausdrückliche Ansage, beide Male mit derselben Begründung — der
 gelistete Vorgänger war nicht installierbar, also ist die neue Version in
@@ -271,7 +273,7 @@ Weil eine App nicht dadurch in den Marktplatz kommt, dass sie hier im Repo
 liegt. Eine **Market Source ist ein eigener Webdienst** (bei AImighty:
 Cloudflare Pages, Repo `bayerhazard/aimighty-market`). Sie listet die App
 unter `/api/v1/appstore/info` und liefert das Chart unter
-`/api/v1/applications/move/chart?fileName=move-26.9.4.tgz`. Das Chart steckt
+`/api/v1/applications/move/chart?fileName=move-26.9.5.tgz`. Das Chart steckt
 dort als base64 in einer Tabelle. In **move ist noch nichts davon eingetragen** —
 dieses Repo enthält nur das Chart selbst.
 
@@ -283,8 +285,8 @@ dieses Repo enthält nur das Chart selbst.
 
 | Datei | wohin |
 |---|---|
-| `dist/move-26.9.4.tgz` | das gepackte Chart |
-| `dist/move-26.9.4.tgz.base64` | eine Zeile, als Wert unter dem Schlüssel `"move-26.9.4.tgz"` |
+| `dist/move-26.9.5.tgz` | das gepackte Chart |
+| `dist/move-26.9.5.tgz.base64` | eine Zeile, als Wert unter dem Schlüssel `"move-26.9.5.tgz"` |
 | `dist/markteintrag.json` | die Metadatenfelder, aus dem Manifest gelesen |
 
 Der CI-Job **Chart-Paket** führt das bei jedem Push mit echtem Helm aus und

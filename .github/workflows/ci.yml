@@ -93,6 +93,59 @@ jobs:
         working-directory: web
         run: npm run typecheck
 
+      - name: Textfelder sind gegen Autofill gesichert
+        # AUS EINEM ECHTEN FEHLSCHLAG auf der Box. Im Feld stand sichtbar
+        # "Kai", und die Oberflaeche meldete "Die Figur braucht einen Namen".
+        #
+        # Ursache: ein kontrolliertes React-Feld (value + onChange) mit dem
+        # Label "Name" ist ein Autofill-Ziel. Autofill setzt den Wert im DOM
+        # und loest KEIN onChange aus; passiert es vor der Hydration, richtet
+        # React den Wert auch nicht nach. Der State bleibt leer, die Pruefung
+        # greift, und der Nutzer sieht seine Eingabe und die Meldung, es gaebe
+        # keine.
+        #
+        # In Browser gemessen, beide Richtungen: der alte Stand meldet
+        # "Die Figur braucht einen Namen" und legt nichts an, der neue legt
+        # die Figur an. tsc und die Unit-Tests sehen davon nichts -- deshalb
+        # dieser Guard.
+        #
+        # Die Regel: jedes Text- und Textarea-Feld traegt autoComplete. Wer
+        # Autofill ausdruecklich will, schreibt den passenden Wert hin (etwa
+        # "email") und erfuellt sie damit auch.
+        working-directory: web
+        run: |
+          ohne=0
+          for datei in $(grep -rl -E "<(input|textarea)" src/); do
+            # Jeden Tag als eine Zeile zusammenfassen, damit mehrzeilige
+            # Attributlisten in einem Stueck geprueft werden.
+            treffer="$(python3 - "$datei" <<'PY'
+          import re, sys
+          text = open(sys.argv[1], encoding="utf-8").read()
+          # type="file" braucht kein autoComplete: eine Dateiauswahl wird
+          # nicht ausgefuellt.
+          for tag in re.findall(r"<(?:input|textarea)\b[^>]*>", text, re.S):
+              eine_zeile = " ".join(tag.split())
+              if 'type="file"' in eine_zeile:
+                  continue
+              if "autoComplete" not in eine_zeile:
+                  print(eine_zeile[:120])
+          PY
+          )"
+            if [ -n "$treffer" ]; then
+              echo "$datei:"
+              echo "$treffer" | sed 's/^/      /'
+              ohne=1
+            fi
+          done
+          if [ "$ohne" -ne 0 ]; then
+            echo
+            echo "Diese Felder tragen kein autoComplete."
+            echo "Ein Feld, das der Browser ausfuellt, ohne dass React es merkt,"
+            echo "verliert die Eingabe still -- gemessen mit dem Namensfeld einer Figur."
+            exit 1
+          fi
+          echo "Alle Text- und Textarea-Felder tragen autoComplete."
+
       - name: Bauen
         working-directory: web
         run: npm run build

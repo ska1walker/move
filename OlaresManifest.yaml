@@ -25,7 +25,7 @@ metadata:
   appid: move
   icon: https://raw.githubusercontent.com/ska1walker/move/main/icon.png
   title: Move
-  version: 26.9.4
+  version: 26.9.5
   description: Cut templates as timestamps, applied deterministically with ffmpeg
   categories:
     - Utilities
@@ -43,7 +43,7 @@ entrances:
     authLevel: private
 
 spec:
-  versionName: 26.9.4
+  versionName: 26.9.5
   fullDescription: |
     Move builds videos from cut templates.
 
@@ -61,6 +61,23 @@ spec:
 
     **Resource usage** CPU only. No GPU is requested in this version.
   upgradeDescription: |
+    26.9.5: Fixes a field that silently swallowed what you typed, and adds
+    guidance on reference images. The name field of a figure was a controlled
+    React input; the browser autofilled it, which sets the DOM value without
+    firing a React change event, so the state stayed empty. The page showed
+    "Kai" in the field and "the figure needs a name" underneath. Measured in
+    a real browser, both ways. The text fields are now uncontrolled and read
+    from the DOM, every text field carries autoComplete, and CI rejects one
+    that does not.
+
+    Also new: an expandable note on the figure form answering how many photos
+    and which ones. Short version: one image is used, because one image_url
+    goes to the model per call. Frontal, sharp, evenly lit, that person alone,
+    wearing what should recur. Many image-to-video models use the reference as
+    the first frame, in which case a neutral portrait is the better choice and
+    variety comes from the per-shot prompt -- but that semantic is not
+    measured here, since fal.ai is unreachable from the build environment.
+
     26.9.4: The interface can now do the whole job. Until this version a user
     had to run `move_worker extract` inside the worker pod to get a template
     at all, so the page showed nothing but a hint. New: upload an MP4 and the
