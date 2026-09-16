@@ -9,11 +9,11 @@ Kein Modell, keine Inferenz. Nur Standardbibliothek und ffmpeg.
 ```bash
 # Baukontext ist das Repo-Wurzelverzeichnis, nicht worker/ --
 # db/schema.sql liegt ausserhalb und wird von Web und Worker gelesen.
-docker build -f worker/Dockerfile -t moveworker:26.9.3 .
+docker build -f worker/Dockerfile -t moveworker:26.9.4 .
 
-docker run --rm -v /pfad/zu/appdata:/app/data moveworker:26.9.3 \
+docker run --rm -v /pfad/zu/appdata:/app/data moveworker:26.9.4 \
   enqueue --template /app/examples/beat-8s.json
-docker run --rm -v /pfad/zu/appdata:/app/data moveworker:26.9.3
+docker run --rm -v /pfad/zu/appdata:/app/data moveworker:26.9.4
 ```
 
 Der Standardbefehl ist `work`: die Polling-Schleife auf der Job-Tabelle. Der

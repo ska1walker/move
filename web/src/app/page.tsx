@@ -9,9 +9,11 @@
  */
 
 import { falBereit } from '@/lib/einstellungen';
-import { jobs, templates } from '@/lib/daten';
+import { extraktionen, figuren, jobs, templates } from '@/lib/daten';
 
+import Figuren from './Figuren';
 import JobFormular from './JobFormular';
+import VideoQuelle from './VideoQuelle';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,11 +30,15 @@ function dauer(job: { started_at: number | null; finished_at: number | null }): 
 export default function Seite() {
   let vorlagen: ReturnType<typeof templates> = [];
   let liste: ReturnType<typeof jobs> = [];
+  let personen: ReturnType<typeof figuren> = [];
+  let auswertungen: ReturnType<typeof extraktionen> = [];
   let fehler: string | null = null;
 
   try {
     vorlagen = templates();
     liste = jobs(25);
+    personen = figuren();
+    auswertungen = extraktionen(10);
   } catch (e) {
     fehler = e instanceof Error ? e.message : String(e);
   }
@@ -54,15 +60,61 @@ export default function Seite() {
       )}
 
       <section className="block">
+        <h2>Quellvideo auswerten</h2>
+        <VideoQuelle />
+      </section>
+
+      {auswertungen.length > 0 && (
+        <section className="block">
+          <h2>Auswertungen</h2>
+          <div className="tabelle">
+            <table>
+              <thead>
+                <tr>
+                  <th>Stand</th>
+                  <th>Name</th>
+                  <th>Angelegt</th>
+                  <th>Ergebnis</th>
+                </tr>
+              </thead>
+              <tbody>
+                {auswertungen.map((a) => (
+                  <tr key={a.id}>
+                    <td className={`stand stand-${a.status}`}>{a.status}</td>
+                    <td>{a.name}</td>
+                    <td className="mono leise">{zeit(a.created_at)}</td>
+                    <td>
+                      {a.status === 'done' ? (
+                        <span className="leise">Template abgelegt</span>
+                      ) : a.status === 'failed' ? (
+                        <span className="leise">{(a.error ?? '').split('\n')[0]}</span>
+                      ) : (
+                        <span className="leise">-</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      <section className="block">
         <h2>Job anlegen</h2>
         {vorlagen.length === 0 ? (
           <p className="leise">
-            Noch kein Template abgelegt. In v0 legt der Worker eines ab:{' '}
-            <code>python3 -m move_worker enqueue --template examples/beat-8s.json</code>
+            Noch kein Template. Oben ein Quellvideo hochladen — der Worker gewinnt
+            daraus die Schnittzeitpunkte, und danach steht hier das Formular.
           </p>
         ) : (
           <JobFormular
             falBereit={falBereit()}
+            figuren={personen.map((f) => ({
+              id: f.id,
+              name: f.name,
+              referenz_uri: f.referenz_uri,
+            }))}
             vorlagen={vorlagen.map((v) => ({
               id: v.id,
               name: v.name,
@@ -82,6 +134,18 @@ export default function Seite() {
             }))}
           />
         )}
+      </section>
+
+      <section className="block">
+        <h2>Figuren</h2>
+        <Figuren
+          figuren={personen.map((f) => ({
+            id: f.id,
+            name: f.name,
+            beschreibung: f.beschreibung,
+            referenz_uri: f.referenz_uri,
+          }))}
+        />
       </section>
 
       <section className="block">

@@ -22,6 +22,7 @@ Zeitstempel sind ueberall ganze Millisekunden.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -99,6 +100,13 @@ class Clip:
     optional und fallen auf "" zurueck; aeltere Jobs bleiben lesbar.
 
     `model` leer heisst: das aus MOVE_FAL_MODEL.
+
+    `figur_id` verweist auf eine Zeile in `figur` und ist der Weg zu
+    konsistenten Personen: Beschreibung und Referenzbild dieser Figur wandern
+    in JEDE Einstellung ein, die sie nennt. Das Feld steht im JSON und nicht
+    in einer Spalte -- `render_job.clips` ist Text, ein neues Feld kostet
+    darum keine DDL, und aeltere Jobs bleiben lesbar, weil hier jedes Feld
+    einen Standard hat.
     """
 
     index: int
@@ -106,6 +114,7 @@ class Clip:
     uri: str = ""
     prompt: str = ""
     model: str = ""
+    figur_id: str = ""
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -114,6 +123,7 @@ class Clip:
             "uri": self.uri,
             "prompt": self.prompt,
             "model": self.model,
+            "figur_id": self.figur_id,
         }
 
     @classmethod
@@ -124,6 +134,7 @@ class Clip:
             uri=str(roh.get("uri", "")),
             prompt=str(roh.get("prompt", "")),
             model=str(roh.get("model", "")),
+            figur_id=str(roh.get("figur_id", "")),
         )
 
 
@@ -142,6 +153,58 @@ class RenderJob:
     @property
     def nur_platzhalter(self) -> bool:
         return all(c.source == "placeholder" for c in self.clips)
+
+
+@dataclass(frozen=True)
+class Upload:
+    """Eine hochgeladene Datei. `art` ist 'video' oder 'bild'."""
+
+    id: str
+    name: str
+    uri: str
+    art: str
+    bytes: int = 0
+    created_at: int = 0
+
+
+@dataclass(frozen=True)
+class ExtractJob:
+    """Auftrag: aus einem hochgeladenen Video ein CutTemplate gewinnen."""
+
+    id: str
+    upload_id: str
+    name: str
+    status: str
+    error: str | None = None
+    template_id: str | None = None
+    created_at: int = 0
+    started_at: int | None = None
+    finished_at: int | None = None
+
+
+@dataclass(frozen=True)
+class Figur:
+    """Eine Person, die ueber mehrere Einstellungen gleich aussehen soll.
+
+    `seed` leer heisst nicht "kein Seed", sondern "einer, der aus der id
+    kommt". Ein Zufallswert je Aufruf waere genau das Gegenteil von
+    Konsistenz, und ein fester Wert im Code waere fuer alle Figuren derselbe.
+    """
+
+    id: str
+    name: str
+    beschreibung: str = ""
+    referenz_uri: str = ""
+    seed: int | None = None
+    created_at: int = 0
+
+    def wirksamer_seed(self) -> int:
+        if self.seed is not None:
+            return int(self.seed)
+        # Stabil, aus der id. Auf 31 Bit begrenzt, weil manche Modelle
+        # groessere Zahlen ablehnen.
+        roh = hashlib.sha256(self.id.encode("utf-8")).digest()
+        return int.from_bytes(roh[:4], "big") & 0x7FFFFFFF
 
 
 @dataclass
@@ -335,6 +398,174 @@ class Repository:
                 extra={"anzahl": anzahl},
             )
         return anzahl
+
+    # -- Uploads ----------------------------------------------------------
+
+    def save_upload(self, name: str, uri: str, art: str, bytes_gesamt: int) -> str:
+        if art not in ("video", "bild"):
+            raise RepositoryError(f"art muss 'video' oder 'bild' sein, nicht {art!r}")
+        kennung = new_id()
+        self.connect().execute(
+            "INSERT INTO upload (id, name, uri, art, bytes, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (kennung, name, uri, art, int(bytes_gesamt), now_ms()),
+        )
+        LOG.info("Upload abgelegt", extra={"upload_id": kennung, "art": art, "bytes": bytes_gesamt})
+        return kennung
+
+    def get_upload(self, upload_id: str) -> Upload:
+        zeile = self.connect().execute(
+            "SELECT * FROM upload WHERE id = ?", (upload_id,)
+        ).fetchone()
+        if zeile is None:
+            raise RepositoryError(f"Kein upload mit der id {upload_id!r}")
+        return Upload(
+            id=zeile["id"],
+            name=zeile["name"],
+            uri=zeile["uri"],
+            art=zeile["art"],
+            bytes=zeile["bytes"],
+            created_at=zeile["created_at"],
+        )
+
+    # -- Extraktion -------------------------------------------------------
+
+    def enqueue_extract(self, upload_id: str, name: str) -> str:
+        job_id = new_id()
+        self.connect().execute(
+            "INSERT INTO extract_job (id, upload_id, name, status, created_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (job_id, upload_id, name, STATUS_QUEUED, now_ms()),
+        )
+        LOG.info("Extraktion eingereiht", extra={"job_id": job_id, "upload_id": upload_id})
+        return job_id
+
+    def claim_next_extract(self) -> ExtractJob | None:
+        """Dasselbe BEGIN IMMEDIATE wie bei den Render-Jobs.
+
+        Eigene Methode statt eines Parameters an claim_next: die beiden
+        Tabellen haben verschiedene Spalten, und ein generisches Ziehen
+        ueber zwei Tabellen waere zwei Abfragen in einer Transaktion -- mehr
+        Schloss, kein Gewinn.
+        """
+        conn = self.connect()
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            zeile = conn.execute(
+                "SELECT * FROM extract_job WHERE status = ? ORDER BY created_at LIMIT 1",
+                (STATUS_QUEUED,),
+            ).fetchone()
+            if zeile is None:
+                conn.execute("COMMIT")
+                return None
+
+            gestartet = now_ms()
+            conn.execute(
+                "UPDATE extract_job SET status = ?, started_at = ? WHERE id = ?",
+                (STATUS_RUNNING, gestartet, zeile["id"]),
+            )
+            conn.execute("COMMIT")
+        except Exception:
+            conn.execute("ROLLBACK")
+            raise
+
+        return ExtractJob(
+            id=zeile["id"],
+            upload_id=zeile["upload_id"],
+            name=zeile["name"],
+            status=STATUS_RUNNING,
+            error=zeile["error"],
+            template_id=zeile["template_id"],
+            created_at=zeile["created_at"],
+            started_at=gestartet,
+            finished_at=zeile["finished_at"],
+        )
+
+    def mark_extract_done(self, job_id: str, template_id: str) -> None:
+        self.connect().execute(
+            "UPDATE extract_job SET status = ?, template_id = ?, finished_at = ?, error = NULL "
+            "WHERE id = ?",
+            (STATUS_DONE, template_id, now_ms(), job_id),
+        )
+        LOG.info("Extraktion fertig", extra={"job_id": job_id, "template_id": template_id})
+
+    def mark_extract_failed(self, job_id: str, error: str) -> None:
+        self.connect().execute(
+            "UPDATE extract_job SET status = ?, error = ?, finished_at = ? WHERE id = ?",
+            (STATUS_FAILED, error, now_ms(), job_id),
+        )
+        LOG.error("Extraktion gescheitert", extra={"job_id": job_id, "error": error})
+
+    def reset_stale_extract(self) -> int:
+        """Wie reset_stale_running, fuer die Extraktions-Warteschlange.
+
+        Ohne das stuende eine Extraktion, die ein Pod-Neustart mitten in
+        ffmpeg getroffen hat, fuer immer auf running -- und die Oberflaeche
+        zeigte einen Auftrag, an dem niemand arbeitet.
+        """
+        cur = self.connect().execute(
+            "UPDATE extract_job SET status = ?, started_at = NULL WHERE status = ?",
+            (STATUS_QUEUED, STATUS_RUNNING),
+        )
+        anzahl = cur.rowcount or 0
+        if anzahl:
+            LOG.warning(
+                "haengende Extraktionen zurueck in die Warteschlange",
+                extra={"anzahl": anzahl},
+            )
+        return anzahl
+
+    # -- Figuren ----------------------------------------------------------
+
+    def save_figur(self, figur: Figur) -> str:
+        kennung = figur.id or new_id()
+        if not figur.name.strip():
+            raise RepositoryError("Eine Figur braucht einen Namen")
+        self.connect().execute(
+            "INSERT OR REPLACE INTO figur "
+            "(id, name, beschreibung, referenz_uri, seed, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                kennung,
+                figur.name.strip(),
+                figur.beschreibung,
+                figur.referenz_uri,
+                figur.seed,
+                figur.created_at or now_ms(),
+            ),
+        )
+        return kennung
+
+    def get_figur(self, figur_id: str) -> Figur:
+        zeile = self.connect().execute(
+            "SELECT * FROM figur WHERE id = ?", (figur_id,)
+        ).fetchone()
+        if zeile is None:
+            raise RepositoryError(f"Keine figur mit der id {figur_id!r}")
+        return Figur(
+            id=zeile["id"],
+            name=zeile["name"],
+            beschreibung=zeile["beschreibung"],
+            referenz_uri=zeile["referenz_uri"],
+            seed=zeile["seed"],
+            created_at=zeile["created_at"],
+        )
+
+    def figuren(self) -> list[Figur]:
+        zeilen = self.connect().execute(
+            "SELECT * FROM figur ORDER BY name"
+        ).fetchall()
+        return [
+            Figur(
+                id=z["id"],
+                name=z["name"],
+                beschreibung=z["beschreibung"],
+                referenz_uri=z["referenz_uri"],
+                seed=z["seed"],
+                created_at=z["created_at"],
+            )
+            for z in zeilen
+        ]
 
     # -- intern -----------------------------------------------------------
 

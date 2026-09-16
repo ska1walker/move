@@ -271,6 +271,7 @@ def template_aus_video(
     min_shot_ms: int = DEFAULT_MIN_SHOT_MS,
     snap_toleranz_ms: int = 0,
     template_id: str = "",
+    beat_pflicht: bool = True,
 ) -> CutTemplate:
     """Baut ein CutTemplate aus einem Video.
 
@@ -287,7 +288,35 @@ def template_aus_video(
     if dauer <= 0:
         raise ExtraktionsFehler(f"{pfad}: Laufzeit ist {dauer} ms")
 
-    grid = beat_grid(pfad)
+    # BEAT-GRID OPTIONAL MACHEN, wenn der Aufrufer es erlaubt.
+    #
+    # Das Produkt sind die SCHNITTE. Das Beat-Grid verbessert sie nur: es
+    # entscheidet, ob ein Schnitt auf den naechsten Beat gezogen wird. Ohne
+    # Grid entsteht ein vollstaendig brauchbares Template.
+    #
+    # Fuer die CLI bleibt es streng (`beat_pflicht=True`): wer `extract`
+    # aufruft, hat ein Beat-Grid verlangt, und ein fehlendes librosa ist ein
+    # kaputtes Image und kein Grund fuer ein halbes Ergebnis.
+    #
+    # Fuer die Extraktion aus der Oberflaeche ist es das Gegenteil. Dort hat
+    # jemand ein Video hochgeladen und will ein Template; scheitert die
+    # Tonanalyse an dieser einen Datei, waere es falsch, deshalb auch die
+    # Schnitte wegzuwerfen. Still passiert das NICHT: der Grund steht als
+    # Warnung im Log und im source_label des Templates, und das zeigt die
+    # Oberflaeche in der Spalte "Quelle" an.
+    grid_fehler = ""
+    try:
+        grid = beat_grid(pfad)
+    except ExtraktionsFehler as exc:
+        if beat_pflicht:
+            raise
+        grid = None
+        grid_fehler = str(exc).split("\n")[0]
+        LOG.warning(
+            "Beat-Grid nicht ermittelbar, Template entsteht ohne",
+            extra={"datei": str(pfad), "grund": grid_fehler},
+        )
+
     erkennungen = schnittzeitpunkte(pfad, schwelle=schwelle, min_shot_ms=min_shot_ms)
 
     zeiten = [e.at_ms for e in erkennungen]
@@ -321,7 +350,7 @@ def template_aus_video(
     vorlage = CutTemplate(
         id=template_id or pfad.stem,
         name=name or pfad.stem,
-        source_label=pfad.name,
+        source_label=f"{pfad.name} (ohne Beat-Grid: {grid_fehler})" if grid_fehler else pfad.name,
         duration_ms=dauer,
         cuts=tuple(
             # Uebergangsart und Bildgroesse sind NICHT erkannt, siehe

@@ -27,6 +27,16 @@ export type Clip = {
   prompt?: string;
   /** Nur bei source 'fal'; leer heisst der Standard des Workers. */
   model?: string;
+  /**
+   * Nur bei source 'fal': die Figur, die in dieser Einstellung auftreten
+   * soll. Ihre Beschreibung, ihr Referenzbild und ihr Seed wandern dann in
+   * jede Einstellung ein, die sie nennt -- das ist der Mechanismus hinter
+   * konsistenten Personen.
+   *
+   * Steht im JSON und nicht in einer Spalte: `render_job.clips` ist Text,
+   * ein neues Feld kostet damit keine DDL, und aeltere Jobs bleiben lesbar.
+   */
+  figur_id?: string;
 };
 
 export type Cut = {
@@ -214,4 +224,140 @@ export function job(id: string): RenderJob | null {
     .prepare('SELECT * FROM render_job WHERE id = ?')
     .get(id) as unknown as JobZeile | undefined;
   return z ? alsJob(z) : null;
+}
+
+// ---------------------------------------------------------------------------
+// Uploads, Extraktion, Figuren
+//
+// Der Weg, der in v0 gefehlt hat: ohne ihn musste jemand im Worker-Pod
+// `move_worker extract` tippen, um ueberhaupt ein Template zu bekommen -- und
+// ohne Template zeigt die Seite nur einen Hinweistext.
+//
+// Das Web REIHT EIN und liest. Extrahiert wird im Worker, wie gerendert wird:
+// ffmpeg und librosa liegen im Worker-Image, nicht im Web, und der Envoy-
+// Sidecar laesst ohnehin keinen Aufruf zwischen den Pods zu.
+// ---------------------------------------------------------------------------
+
+export type UploadArt = 'video' | 'bild';
+
+export type Upload = {
+  id: string;
+  name: string;
+  uri: string;
+  art: UploadArt;
+  bytes: number;
+  created_at: number;
+};
+
+export type ExtractJob = {
+  id: string;
+  upload_id: string;
+  name: string;
+  status: Status;
+  error: string | null;
+  template_id: string | null;
+  created_at: number;
+  started_at: number | null;
+  finished_at: number | null;
+};
+
+export type Figur = {
+  id: string;
+  name: string;
+  beschreibung: string;
+  referenz_uri: string;
+  seed: number | null;
+  created_at: number;
+};
+
+type UploadZeile = {
+  id: string;
+  name: string;
+  uri: string;
+  art: string;
+  bytes: number;
+  created_at: number;
+};
+
+export function uploadAblegen(
+  name: string,
+  uri: string,
+  art: UploadArt,
+  bytes: number,
+): string {
+  const id = neueId();
+  db()
+    .prepare(
+      'INSERT INTO upload (id, name, uri, art, bytes, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    )
+    .run(id, name, uri, art, bytes, jetztMs());
+  return id;
+}
+
+export function uploads(art: UploadArt | null = null, grenze = 50): Upload[] {
+  const zeilen = (
+    art === null
+      ? db().prepare('SELECT * FROM upload ORDER BY created_at DESC LIMIT ?').all(grenze)
+      : db()
+          .prepare('SELECT * FROM upload WHERE art = ? ORDER BY created_at DESC LIMIT ?')
+          .all(art, grenze)
+  ) as unknown as UploadZeile[];
+  return zeilen.map((z) => ({ ...z, art: z.art as UploadArt }));
+}
+
+export function upload(id: string): Upload | null {
+  const z = db().prepare('SELECT * FROM upload WHERE id = ?').get(id) as unknown as
+    | UploadZeile
+    | undefined;
+  return z ? { ...z, art: z.art as UploadArt } : null;
+}
+
+export function extraktionEinreihen(uploadId: string, name: string): string {
+  const id = neueId();
+  db()
+    .prepare(
+      'INSERT INTO extract_job (id, upload_id, name, status, created_at) VALUES (?, ?, ?, ?, ?)',
+    )
+    .run(id, uploadId, name, 'queued', jetztMs());
+  return id;
+}
+
+export function extraktionen(grenze = 25): ExtractJob[] {
+  return db()
+    .prepare('SELECT * FROM extract_job ORDER BY created_at DESC LIMIT ?')
+    .all(grenze) as unknown as ExtractJob[];
+}
+
+export function figuren(): Figur[] {
+  return db().prepare('SELECT * FROM figur ORDER BY name').all() as unknown as Figur[];
+}
+
+export function figur(id: string): Figur | null {
+  const z = db().prepare('SELECT * FROM figur WHERE id = ?').get(id) as unknown as
+    | Figur
+    | undefined;
+  return z ?? null;
+}
+
+export function figurAnlegen(
+  name: string,
+  beschreibung: string,
+  referenzUri: string,
+): string {
+  const id = neueId();
+  db()
+    .prepare(
+      'INSERT INTO figur (id, name, beschreibung, referenz_uri, created_at) ' +
+        'VALUES (?, ?, ?, ?, ?)',
+    )
+    // seed bleibt NULL: der Worker leitet ihn dann stabil aus der id ab.
+    // Eine Zahl hier zu erfinden waere fuer alle Figuren dieselbe oder je
+    // Aufruf eine andere -- beides ist das Gegenteil von Konsistenz.
+    .run(id, name.trim(), beschreibung, referenzUri, jetztMs());
+  return id;
+}
+
+export function figurLoeschen(id: string): boolean {
+  const cur = db().prepare('DELETE FROM figur WHERE id = ?').run(id);
+  return Number(cur.changes ?? 0) > 0;
 }

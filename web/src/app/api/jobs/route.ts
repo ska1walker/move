@@ -10,7 +10,7 @@
 import { existsSync } from 'node:fs';
 import { isAbsolute, join, normalize } from 'node:path';
 
-import { datenVerzeichnis, jobEinreihen, jobs, template, type Clip } from '@/lib/daten';
+import { datenVerzeichnis, figur, jobEinreihen, jobs, template, type Clip } from '@/lib/daten';
 import { falBereit } from '@/lib/einstellungen';
 import { identitaet } from '@/lib/identitaet';
 
@@ -72,12 +72,14 @@ export async function POST(request: Request) {
           uri?: unknown;
           prompt?: unknown;
           model?: unknown;
+          figur_id?: unknown;
         };
         const index = typeof c.index === 'number' ? c.index : i;
         const source = typeof c.source === 'string' ? c.source : 'placeholder';
         const uri = typeof c.uri === 'string' ? c.uri : '';
         const prompt = typeof c.prompt === 'string' ? c.prompt.trim() : '';
         const model = typeof c.model === 'string' ? c.model.trim() : '';
+        const figurId = typeof c.figur_id === 'string' ? c.figur_id.trim() : '';
 
         if (source === 'fal') {
           // Erst die Frage, ob es ueberhaupt gehen kann. Ohne hinterlegten
@@ -97,11 +99,31 @@ export async function POST(request: Request) {
           if (prompt === '') {
             throw new Error(`clips[${index}]: source 'fal' braucht einen prompt`);
           }
-        } else if (source !== 'placeholder') {
-          pruefeUri(index, uri);
+          // Die Figur JETZT pruefen, nicht im Worker. Eine Figur, die es
+          // nicht gibt, wuerde dort erst auffallen, nachdem die
+          // Einstellungen davor schon bezahlt sind.
+          if (figurId !== '') {
+            const person = figur(figurId);
+            if (!person) {
+              throw new Error(`clips[${index}]: keine Figur mit der id ${figurId}`);
+            }
+          }
+        } else {
+          if (figurId !== '') {
+            // Eine Figur an einem Platzhalter oder einer eigenen Datei tut
+            // nichts. Still ignorieren waere schlimmer als ablehnen: es sieht
+            // aus, als waere die Person gesetzt.
+            throw new Error(
+              `clips[${index}]: figur_id gilt nur fuer source 'fal'; ` +
+                `bei source '${source}' hat sie keine Wirkung`,
+            );
+          }
+          if (source !== 'placeholder') {
+            pruefeUri(index, uri);
+          }
         }
 
-        return { index, source, uri, prompt, model };
+        return { index, source, uri, prompt, model, figur_id: figurId };
       });
 
       const indizes = new Set(clips.map((c) => c.index));

@@ -8,17 +8,21 @@
  *   Dateien       eigene MP4s, eine je Einstellung.
  *   fal.ai        erzeugen lassen, eine Beschreibung je Einstellung.
  *
- * Der Upload laeuft ueber XMLHttpRequest und nicht ueber fetch: einen
- * Fortschritt beim Hochladen gibt es nur dort. `fetch` meldet erst, wenn
- * alles durch ist -- bei einer 400-MB-Datei also minutenlang nichts.
+ * Bei fal.ai kann je Einstellung eine FIGUR gewaehlt werden. Dann wandern
+ * Beschreibung, Referenzbild und Seed dieser Figur in genau diese Einstellung
+ * ein -- und in jede andere, die dieselbe Figur nennt. Das ist der ganze
+ * Mechanismus hinter konsistenten Personen: nicht ein Modell, das sich
+ * erinnert, sondern dieselben Eingaben, jedes Mal.
  *
- * Geschickt wird die Datei als ROHER Koerper (`xhr.send(datei)`), nicht als
- * multipart/form-data. Der Route Handler streamt sie damit ohne Parser und
- * ohne Puffer auf die Platte.
+ * Der Upload liegt in `hochladen.ts` und nicht hier: es gibt inzwischen drei
+ * Aufrufer (Clips, Quellvideo, Referenzbild), und eine Kopie je Aufrufer
+ * waere genau das Duplikat, das auseinanderdriftet.
  */
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
+
+import { hochladen } from './hochladen';
 
 type Einstellung = {
   index: number;
@@ -37,53 +41,26 @@ type Vorlage = {
 
 type Quelle = 'placeholder' | 'upload' | 'fal';
 
-type Hochgeladen = { uri: string; name: string; bytes: number };
-
-function hochladen(datei: File, aufFortschritt: (anteil: number) => void): Promise<Hochgeladen> {
-  return new Promise((erfuellen, ablehnen) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', `/api/uploads?name=${encodeURIComponent(datei.name)}`);
-
-    xhr.upload.addEventListener('progress', (e) => {
-      if (e.lengthComputable) aufFortschritt(e.loaded / e.total);
-    });
-
-    xhr.addEventListener('load', () => {
-      let antwort: { uri?: string; name?: string; bytes?: number; fehler?: string } = {};
-      try {
-        antwort = JSON.parse(xhr.responseText);
-      } catch {
-        ablehnen(new Error(`Antwort ${xhr.status} war kein JSON`));
-        return;
-      }
-      if (xhr.status >= 200 && xhr.status < 300 && antwort.uri) {
-        erfuellen({ uri: antwort.uri, name: antwort.name ?? datei.name, bytes: antwort.bytes ?? 0 });
-      } else {
-        ablehnen(new Error(antwort.fehler ?? `Upload endete mit ${xhr.status}`));
-      }
-    });
-
-    xhr.addEventListener('error', () => ablehnen(new Error('Netzwerkfehler beim Upload')));
-    xhr.addEventListener('abort', () => ablehnen(new Error('Upload abgebrochen')));
-
-    xhr.send(datei);
-  });
-}
-
 export default function JobFormular({
   vorlagen,
   falBereit,
+  figuren,
 }: {
   vorlagen: Vorlage[];
   /** Ob am Worker ein fal-Schluessel hinterlegt ist. Kommt aus dem Chart
    *  (MOVE_FAL_BEREIT) -- der Schluessel selbst ist hier nie sichtbar. */
   falBereit: boolean;
+  /** Angelegte Figuren, zur Wahl je Einstellung. */
+  figuren: { id: string; name: string; referenz_uri: string }[];
 }) {
   const router = useRouter();
   const dateien = useRef<HTMLInputElement>(null);
   const [vorlageId, setVorlageId] = useState(vorlagen[0]?.id ?? '');
   const [quelle, setQuelle] = useState<Quelle>('placeholder');
   const [prompts, setPrompts] = useState<string[]>([]);
+  // Figur je Einstellung. Leer heisst: keine, dann entscheidet allein der
+  // Prompt -- und die Person sieht in jeder Einstellung anders aus.
+  const [figurIds, setFigurIds] = useState<string[]>([]);
   const [model, setModel] = useState('');
   const [laeuft, setLaeuft] = useState(false);
   const [anteil, setAnteil] = useState<number | null>(null);
@@ -98,6 +75,9 @@ export default function JobFormular({
   useEffect(() => {
     if (!vorlage) return;
     setPrompts((alt) =>
+      Array.from({ length: vorlage.shot_count }, (_, i) => alt[i] ?? ''),
+    );
+    setFigurIds((alt) =>
       Array.from({ length: vorlage.shot_count }, (_, i) => alt[i] ?? ''),
     );
   }, [vorlage]);
@@ -115,8 +95,14 @@ export default function JobFormular({
     try {
       if (!vorlage) throw new Error('Kein Template gewaehlt');
 
-      let clips: { index: number; source: Quelle; uri?: string; prompt?: string; model?: string }[] =
-        [];
+      let clips: {
+        index: number;
+        source: Quelle;
+        uri?: string;
+        prompt?: string;
+        model?: string;
+        figur_id?: string;
+      }[] = [];
 
       if (quelle === 'upload') {
         const gewaehlt = Array.from(dateien.current?.files ?? []);
@@ -140,6 +126,7 @@ export default function JobFormular({
           source: 'fal' as const,
           prompt: p.trim(),
           model: model.trim(),
+          figur_id: figurIds[i] ?? '',
         }));
       }
 
@@ -235,6 +222,12 @@ export default function JobFormular({
           <span className="leise">
             Je Einstellung eine Beschreibung. Die Bildgröße aus dem Template wird
             angehängt.
+            {figuren.length > 0
+              ? ' Dieselbe Figur in mehreren Einstellungen lässt die Person gleich aussehen: ' +
+                'ihre Beschreibung, ihr Referenzbild und ihr Seed gehen dann in jede dieser ' +
+                'Einstellungen ein.'
+              : ' Für eine Person, die in mehreren Einstellungen gleich aussieht, zuerst unten ' +
+                'eine Figur anlegen — sonst würfelt das Modell jede Einstellung neu.'}
           </span>
 
           {vorlage.einstellungen.map((e) => (
@@ -261,6 +254,32 @@ export default function JobFormular({
                   })
                 }
               />
+
+              {figuren.length > 0 && (
+                <label className="feld" htmlFor={`figur-${e.index}`}>
+                  <span className="leise">Figur in dieser Einstellung</span>
+                  <select
+                    id={`figur-${e.index}`}
+                    value={figurIds[e.index] ?? ''}
+                    disabled={laeuft}
+                    onChange={(ev) =>
+                      setFigurIds((alt) => {
+                        const neu = [...alt];
+                        neu[e.index] = ev.target.value;
+                        return neu;
+                      })
+                    }
+                  >
+                    <option value="">keine</option>
+                    {figuren.map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.name}
+                        {f.referenz_uri ? ' (mit Bild)' : ' (nur Beschreibung)'}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
             </div>
           ))}
 

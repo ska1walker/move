@@ -68,29 +68,83 @@ class FalClient(Protocol):
     def subscribe(self, application: str, arguments: dict[str, Any], **kwargs: Any) -> Any: ...
 
 
+# Unter welchem Argumentnamen ein Modell sein Referenzbild erwartet.
+#
+# UNBELEGT, und das ist wichtig zu wissen. fal.ai und docs.fal.ai sind vom
+# Egress-Proxy gesperrt, ich konnte kein einziges Modellschema nachlesen.
+# `image_url` ist der Name, den Bild-zu-Video-Modelle ueblicherweise tragen --
+# eine begruendete Annahme, keine Messung. Passt er nicht, scheitert der Job
+# MIT der vollstaendigen Antwort von fal in `render_job.error`, und daraus ist
+# es hier in einer Zeile zu korrigieren; zur Laufzeit geht es ohne neues Image
+# ueber MOVE_FAL_BILD_ARGUMENT.
+BILD_ARGUMENT = "image_url"
+
+# Dasselbe fuer den Seed. Auch das ist der uebliche Name, nicht mehr.
+SEED_ARGUMENT = "seed"
+
+
+def bild_argument() -> str:
+    return os.environ.get("MOVE_FAL_BILD_ARGUMENT", "").strip() or BILD_ARGUMENT
+
+
+def seed_argument() -> str:
+    return os.environ.get("MOVE_FAL_SEED_ARGUMENT", "").strip() or SEED_ARGUMENT
+
+
 @dataclass(frozen=True)
 class Anfrage:
-    """Was fuer eine Einstellung erzeugt werden soll."""
+    """Was fuer eine Einstellung erzeugt werden soll.
+
+    KONSISTENZ UEBER MEHRERE EINSTELLUNGEN entsteht hier aus drei Dingen, die
+    zusammen wirken. Einzeln taugt keines davon:
+
+        referenz_bild  der starke Hebel. Dasselbe Bild in jeder Einstellung,
+                       ueber ein Bild-zu-Video-Modell. Ohne das bleibt es beim
+                       Zufall, den ein Textmodell je Aufruf neu wuerfelt.
+        prompt         traegt die Beschreibung der Figur schon mit; der
+                       Aufrufer setzt sie davor.
+        seed           dieselbe Zahl je Figur. Hilft bei manchen Modellen,
+                       schadet bei keinem.
+
+    LoRA-Training bleibt draussen -- CLAUDE.md schliesst es aus, und es
+    braeuchte GPU-Zeit und Trainingsdaten.
+    """
 
     prompt: str
     sekunden: float
     breite: int
     height: int
     model: str = DEFAULT_MODEL
+    # Bild im Dateisystem. Wird vor dem Aufruf zu fal hochgeladen, weil die
+    # Modelle eine URL erwarten und keine Datei.
+    referenz_bild: Path | None = None
+    seed: int | None = None
     # Modellspezifisches, das durchgereicht wird, ohne dass dieses Modul es
     # kennen muss.
     extra: tuple[tuple[str, Any], ...] = ()
 
-    def argumente(self) -> dict[str, Any]:
+    def argumente(self, bild_url: str = "") -> dict[str, Any]:
         args: dict[str, Any] = {
             "prompt": self.prompt,
             "duration": round(self.sekunden, 2),
         }
+        if bild_url:
+            args[bild_argument()] = bild_url
+        if self.seed is not None:
+            args[seed_argument()] = int(self.seed)
+        # extra zuletzt: wer ein Argument bewusst je Job setzt, soll die
+        # Vorgaben hier ueberschreiben koennen und nicht umgekehrt.
         args.update(dict(self.extra))
         return args
 
     def schluessel(self) -> str:
-        """Stabiler Hash. Gleiche Anfrage, gleiche Datei, keine neue Rechnung."""
+        """Stabiler Hash. Gleiche Anfrage, gleiche Datei, keine neue Rechnung.
+
+        Referenzbild und Seed gehen MIT ein, und zwar das Bild ueber seinen
+        Inhalt, nicht ueber seinen Pfad. Sonst liefe zwei Figuren mit
+        demselben Prompt derselbe Zwischenspeicher-Eintrag zu -- und eine
+        Figur bekaeme das Gesicht der anderen, ohne dass etwas scheitert.
+        """
         roh = json.dumps(
             {
                 "model": self.model,
@@ -98,12 +152,26 @@ class Anfrage:
                 "sekunden": round(self.sekunden, 3),
                 "breite": self.breite,
                 "hoehe": self.height,
+                "referenz": self._bild_hash(),
+                "seed": self.seed,
                 "extra": sorted(self.extra),
             },
             sort_keys=True,
             ensure_ascii=False,
         )
         return hashlib.sha256(roh.encode("utf-8")).hexdigest()[:16]
+
+    def _bild_hash(self) -> str:
+        if self.referenz_bild is None:
+            return ""
+        pfad = Path(self.referenz_bild)
+        if not pfad.is_file():
+            raise FalFehler(f"Das Referenzbild fehlt: {pfad}")
+        h = hashlib.sha256()
+        with pfad.open("rb") as datei:
+            for stueck in iter(lambda: datei.read(BLOCK), b""):
+                h.update(stueck)
+        return h.hexdigest()[:16]
 
 
 def fal_key() -> str:
@@ -230,6 +298,18 @@ def herunterladen(url: str, ziel: Path, timeout_s: int = DOWNLOAD_TIMEOUT_S) -> 
     return bytes_gesamt
 
 
+class FalClient(Protocol):  # noqa: F811 - erweitert die Zusage oben
+    """Nur das, was hier gebraucht wird -- damit ein Doppel einspringen kann.
+
+    `upload_file` kommt hinzu, weil ein Referenzbild als URL an das Modell
+    geht und nicht als Datei.
+    """
+
+    def subscribe(self, application: str, arguments: dict[str, Any], **kwargs: Any) -> Any: ...
+
+    def upload_file(self, path: str) -> str: ...
+
+
 @dataclass
 class Generator:
     """Erzeugt Clips und legt sie im Zwischenspeicher ab."""
@@ -237,6 +317,10 @@ class Generator:
     cache_dir: Path
     timeout_s: int = DEFAULT_TIMEOUT_S
     client: FalClient | None = field(default=None, repr=False)
+    # Bild-Pfad -> URL bei fal. Ein Referenzbild wird je Job EINMAL
+    # hochgeladen, nicht je Einstellung: bei acht Einstellungen mit derselben
+    # Figur waeren das acht identische Uploads.
+    _bild_urls: dict[str, str] = field(default_factory=dict, repr=False)
 
     def _client(self) -> FalClient:
         if self.client is not None:
@@ -256,6 +340,45 @@ class Generator:
     def pfad_fuer(self, anfrage: Anfrage) -> Path:
         return Path(self.cache_dir) / f"{anfrage.schluessel()}.mp4"
 
+    def bild_url(self, pfad: Path) -> str:
+        """Laedt ein Referenzbild zu fal und gibt die URL zurueck.
+
+        Gemerkt je Pfad, damit dieselbe Figur in acht Einstellungen einen
+        Upload kostet und nicht acht.
+        """
+        schluessel = str(pfad)
+        gemerkt = self._bild_urls.get(schluessel)
+        if gemerkt:
+            return gemerkt
+
+        if not pfad.is_file():
+            raise FalFehler(f"Das Referenzbild fehlt: {pfad}")
+
+        client = self._client()
+        hochladen = getattr(client, "upload_file", None)
+        if hochladen is None:
+            raise FalFehler(
+                "Der fal-Client kennt kein upload_file. Ohne das kann ein "
+                "Referenzbild nicht uebergeben werden -- eine Figur mit Bild "
+                "ist damit nicht erzeugbar. fal-client aktualisieren."
+            )
+        try:
+            url = hochladen(str(pfad))
+        except Exception as exc:
+            raise FalFehler(
+                f"Referenzbild {pfad.name} konnte nicht zu fal geladen werden: "
+                f"{type(exc).__name__}: {_ohne_geheimnis(str(exc))}"
+            ) from exc
+
+        if not ist_web_url(url):
+            raise FalFehler(
+                f"fal hat fuer {pfad.name} keine http-URL geliefert, sondern "
+                f"{_ohne_geheimnis(str(url))[:200]!r}"
+            )
+        self._bild_urls[schluessel] = url
+        LOG.info("Referenzbild hochgeladen", extra={"datei": pfad.name})
+        return url
+
     def erzeuge(self, anfrage: Anfrage) -> Path:
         """Liefert den Pfad zum Clip. Erzeugt ihn nur, wenn er fehlt."""
         ziel = self.pfad_fuer(anfrage)
@@ -267,6 +390,11 @@ class Generator:
             return ziel
 
         client = self._client()
+
+        # Erst das Bild, dann der bezahlte Aufruf. Scheitert der Upload,
+        # soll er scheitern, BEVOR etwas abgerechnet wird.
+        url = self.bild_url(Path(anfrage.referenz_bild)) if anfrage.referenz_bild else ""
+
         LOG.info(
             "erzeuge Clip bei fal",
             extra={
@@ -275,13 +403,15 @@ class Generator:
                 "schluessel": anfrage.schluessel(),
                 # Der Prompt gehoert ins Log, der Schluessel nicht.
                 "prompt": anfrage.prompt[:120],
+                "mit_referenzbild": bool(url),
+                "seed": anfrage.seed,
             },
         )
 
         try:
             antwort = client.subscribe(
                 anfrage.model,
-                anfrage.argumente(),
+                anfrage.argumente(url),
                 client_timeout=self.timeout_s,
             )
         except FalFehler:

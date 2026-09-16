@@ -48,13 +48,77 @@ import { dirname, extname, join } from 'node:path';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 
-import { datenVerzeichnis, neueId } from '@/lib/daten';
+import { datenVerzeichnis, neueId, uploadAblegen, type UploadArt } from '@/lib/daten';
 import { identitaet } from '@/lib/identitaet';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const ERLAUBTE_ENDUNGEN = ['.mp4'];
+/**
+ * Was angenommen wird, und woran man es im Strom erkennt.
+ *
+ * Die Kennung wird in den ERSTEN Bytes geprueft, nicht nach dem Schreiben:
+ * eine Pruefung danach haette die Platte schon vollgeschrieben. Die Endung
+ * allein reicht nicht -- sie steht im Abfrageparameter und kommt damit vom
+ * Browser.
+ *
+ * Bilder sind dazugekommen, weil eine Figur ein Referenzbild braucht: das ist
+ * der starke Hebel fuer konsistente Personen, und ohne Bild bleibt es beim
+ * Zufall, den ein Modell je Aufruf neu wuerfelt.
+ */
+type Kennung = {
+  art: UploadArt;
+  /** Wieviele Bytes gebraucht werden, um zu entscheiden. */
+  mindestens: number;
+  passt: (kopf: Buffer) => boolean;
+  beschreibung: string;
+};
+
+const ANNAHME: Record<string, Kennung> = {
+  '.mp4': {
+    art: 'video',
+    mindestens: 12,
+    // MP4 traegt an Byte 4 die Kennung 'ftyp'.
+    passt: (k) => k.subarray(4, 8).toString('latin1') === 'ftyp',
+    beschreibung: "'ftyp' an Byte 4",
+  },
+  '.png': {
+    art: 'bild',
+    mindestens: 8,
+    passt: (k) => k.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
+    beschreibung: 'PNG-Signatur',
+  },
+  '.jpg': {
+    art: 'bild',
+    mindestens: 3,
+    passt: (k) => k[0] === 0xff && k[1] === 0xd8 && k[2] === 0xff,
+    beschreibung: 'JPEG-Signatur ff d8 ff',
+  },
+  '.jpeg': {
+    art: 'bild',
+    mindestens: 3,
+    passt: (k) => k[0] === 0xff && k[1] === 0xd8 && k[2] === 0xff,
+    beschreibung: 'JPEG-Signatur ff d8 ff',
+  },
+  '.webp': {
+    art: 'bild',
+    mindestens: 12,
+    passt: (k) =>
+      k.subarray(0, 4).toString('latin1') === 'RIFF' &&
+      k.subarray(8, 12).toString('latin1') === 'WEBP',
+    beschreibung: "'RIFF' und 'WEBP' im Kopf",
+  },
+};
+
+const ERLAUBTE_ENDUNGEN = Object.keys(ANNAHME);
+
+/**
+ * Bilder duerfen deutlich kleiner sein als Videos.
+ *
+ * Ein Referenzbild ist ein Portrait, keine Filmdatei. Die grosse Grenze fuer
+ * ein Bild hiesse, dass ein Fehlgriff erst nach einem Gigabyte auffaellt.
+ */
+const MAX_BILD_BYTES = Number(process.env.MOVE_MAX_BILD_BYTES ?? 32 * 1024 * 1024);
 
 /** Obergrenze. 0 schaltet die Pruefung ab. */
 const MAX_BYTES = Number(process.env.MOVE_MAX_UPLOAD_BYTES ?? 4 * 1024 * 1024 * 1024);
@@ -68,7 +132,7 @@ class UploadFehler extends Error {
   }
 }
 
-function sauberName(roh: string): string {
+function sauberName(roh: string): { name: string; endung: string; kennung: Kennung } {
   // Kein Pfad, keine Traversierung. Der Name wird ohnehin nicht als
   // Dateiname benutzt -- die Datei heisst nach ihrer id -- aber er landet in
   // der Antwort und spaeter in der Oberflaeche.
@@ -77,13 +141,14 @@ function sauberName(roh: string): string {
     throw new UploadFehler(400, 'Parameter name fehlt oder ist kein Dateiname');
   }
   const endung = extname(nur).toLowerCase();
-  if (!ERLAUBTE_ENDUNGEN.includes(endung)) {
+  const kennung = ANNAHME[endung];
+  if (!kennung) {
     throw new UploadFehler(
       415,
       `Endung ${endung || '(keine)'} wird nicht angenommen. Erlaubt: ${ERLAUBTE_ENDUNGEN.join(', ')}`,
     );
   }
-  return nur.slice(0, 200);
+  return { name: nur.slice(0, 200), endung, kennung };
 }
 
 /**
@@ -92,28 +157,33 @@ function sauberName(roh: string): string {
  * Beides im Strom, nicht danach: eine Groessenpruefung nach dem Schreiben
  * haette die Platte schon vollgeschrieben.
  */
-function pruefStrom(): Transform {
+function pruefStrom(kennung: Kennung, endung: string, grenze: number): Transform {
   let gezaehlt = 0;
   let kopf: Buffer | null = Buffer.alloc(0);
 
   return new Transform({
     transform(stueck: Buffer, _kodierung, weiter) {
       gezaehlt += stueck.length;
-      if (MAX_BYTES > 0 && gezaehlt > MAX_BYTES) {
-        weiter(new UploadFehler(413, `Datei ist groesser als ${MAX_BYTES} Bytes`));
+      if (grenze > 0 && gezaehlt > grenze) {
+        weiter(new UploadFehler(413, `Datei ist groesser als ${grenze} Bytes`));
         return;
       }
 
       if (kopf !== null) {
         kopf = Buffer.concat([kopf, stueck]);
-        if (kopf.length >= 12) {
-          // MP4 traegt an Byte 4 die Kennung 'ftyp'. Kein vollstaendiger
-          // Test, aber er faengt die verwechselte Datei sofort statt erst im
-          // Worker.
-          const kennung = kopf.subarray(4, 8).toString('latin1');
+        if (kopf.length >= kennung.mindestens) {
+          // Kein vollstaendiger Test, aber er faengt die verwechselte Datei
+          // sofort statt erst im Worker -- oder, bei einem Referenzbild,
+          // erst nach einem bezahlten fal-Aufruf.
+          const geprueft = kennung.passt(kopf);
           kopf = null;
-          if (kennung !== 'ftyp') {
-            weiter(new UploadFehler(415, `Kein MP4: erwartet 'ftyp' an Byte 4, gelesen '${kennung}'`));
+          if (!geprueft) {
+            weiter(
+              new UploadFehler(
+                415,
+                `Passt nicht zu ${endung}: erwartet war ${kennung.beschreibung}`,
+              ),
+            );
             return;
           }
         }
@@ -129,7 +199,10 @@ export async function POST(request: Request) {
   const beginn = Date.now();
 
   try {
-    const name = sauberName(new URL(request.url).searchParams.get('name') ?? '');
+    const { name, endung, kennung } = sauberName(
+      new URL(request.url).searchParams.get('name') ?? '',
+    );
+    const grenze = kennung.art === 'bild' ? MAX_BILD_BYTES : MAX_BYTES;
 
     if (!request.body) {
       throw new UploadFehler(400, 'Kein Anfragekoerper. Die Datei gehoert roh in den Koerper.');
@@ -138,15 +211,15 @@ export async function POST(request: Request) {
     // Wenn die Groesse angekuendigt wird, hier ablehnen statt erst nach
     // einem Gigabyte.
     const angekuendigt = Number(request.headers.get('content-length') ?? '0');
-    if (MAX_BYTES > 0 && angekuendigt > MAX_BYTES) {
+    if (grenze > 0 && angekuendigt > grenze) {
       throw new UploadFehler(
         413,
-        `Angekuendigte Groesse ${angekuendigt} Bytes ueberschreitet ${MAX_BYTES}`,
+        `Angekuendigte Groesse ${angekuendigt} Bytes ueberschreitet ${grenze}`,
       );
     }
 
     const id = neueId();
-    const ziel = join(datenVerzeichnis(), 'uploads', `${id}.mp4`);
+    const ziel = join(datenVerzeichnis(), 'uploads', `${id}${endung}`);
     const teil = `${ziel}.teil`;
     await mkdir(dirname(ziel), { recursive: true });
 
@@ -161,7 +234,7 @@ export async function POST(request: Request) {
     try {
       await pipeline(
         Readable.fromWeb(request.body as import('node:stream/web').ReadableStream),
-        pruefStrom(),
+        pruefStrom(kennung, endung, grenze),
         zaehler,
         createWriteStream(teil),
       );
@@ -192,15 +265,24 @@ export async function POST(request: Request) {
       throw fehler;
     }
 
+    // ERST NACH DEM UMBENENNEN in die Datenbank. Eine Zeile, die auf eine
+    // `.teil`-Datei zeigt, waere ein Upload, den die Oberflaeche anbietet und
+    // der Worker nicht findet.
+    const uri = `uploads/${id}${endung}`;
+    const uploadId = uploadAblegen(name, uri, kennung.art, bytes);
+
     const dauer = Date.now() - beginn;
     console.log(
-      `[upload] ok nutzer=${wer.nutzer ?? '-'} name=${name} bytes=${bytes} ms=${dauer} ` +
+      `[upload] ok nutzer=${wer.nutzer ?? '-'} name=${name} art=${kennung.art} ` +
+        `bytes=${bytes} ms=${dauer} ` +
         `rssMb=${Math.round(process.memoryUsage().rss / 1024 / 1024)}`,
     );
 
     return Response.json({
-      uri: `uploads/${id}.mp4`,
+      id: uploadId,
+      uri,
       name,
+      art: kennung.art,
       bytes,
       dauer_ms: dauer,
     });
