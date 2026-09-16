@@ -25,7 +25,7 @@ metadata:
   appid: move
   icon: https://raw.githubusercontent.com/ska1walker/move/main/icon.png
   title: Move
-  version: 26.9.7
+  version: 26.9.8
   description: Cut templates as timestamps, applied deterministically with ffmpeg
   categories:
     - Utilities
@@ -43,7 +43,7 @@ entrances:
     authLevel: private
 
 spec:
-  versionName: 26.9.7
+  versionName: 26.9.8
   fullDescription: |
     Move builds videos from cut templates.
 
@@ -61,6 +61,38 @@ spec:
 
     **Resource usage** CPU only. No GPU is requested in this version.
   upgradeDescription: |
+    26.9.8: A reference image per shot, and the page now follows the workflow.
+
+    Until now an image could only hang on a figure. A figure is the right tool
+    for one thing -- the same person across several shots -- and the wrong one
+    for the other: giving every scene its own motif meant creating one figure
+    per photo, so "figure" came to mean "photo". Each shot now has its own
+    image field. Both together is the useful case: the figure carries the
+    description and the seed, the shot's image wins as the visual reference.
+    The more specific one wins, so the person stays the same while the motif
+    changes.
+
+    A shot's image also selects the image-to-video endpoint, exactly as a
+    figure's image does. Without that the call would go to a text-to-video
+    model that has no image parameter -- billed, and the image ignored.
+
+    The image is uploaded when the job is created, not when it is picked, so
+    abandoning the form leaves nothing behind. Uploads run before the job is
+    queued: a failed upload means no job and no paid call.
+
+    Page order: "Figures" now comes before "Create job". The per-shot figure
+    dropdown only appears once at least one figure exists, so the old order
+    asked people to create a job and meet figures afterwards. The page follows
+    the workflow now rather than the order the sections were written in.
+
+    Also fixed, and it was a real hole: the worker resolved paths from the job
+    row without confining them to the data directory, and the older branch for
+    clip.uri even accepted absolute paths. The worker reads from the database,
+    not from an HTTP request, so a row saying ../../etc/passwd was a file it
+    would happily read -- and, for a reference image, upload to fal. Both
+    fields are now confined, with tests that fail when the guard is removed;
+    without it, measured, /etc/passwd reached a paid call.
+
     26.9.7: Corrects what move sends to fal.ai, measured against the client
     library and the model pages instead of assumed. Three of the assumptions
     held, two did not.

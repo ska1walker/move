@@ -107,6 +107,21 @@ class Clip:
     in einer Spalte -- `render_job.clips` ist Text, ein neues Feld kostet
     darum keine DDL, und aeltere Jobs bleiben lesbar, weil hier jedes Feld
     einen Standard hat.
+
+    `bild_uri` ist das Referenzbild DIESER EINEN Einstellung, als Pfad im
+    Datenverzeichnis. Es gibt zwei Wege zu einem Bild, und sie meinen
+    Verschiedenes:
+
+        figur_id   dieselbe Person ueber mehrere Einstellungen. Ein Bild,
+                   viele Einstellungen -- Konsistenz.
+        bild_uri   ein Bild fuer genau diese Einstellung. Viele Bilder,
+                   eine je Einstellung -- Abwechslung.
+
+    Beides zusammen ist erlaubt und sinnvoll: die Figur traegt dann die
+    Beschreibung und den Seed, das Bild der Einstellung gewinnt als
+    Bildvorgabe. Die Begruendung ist die allgemeine Regel, dass das
+    Spezifischere gewinnt -- wer an einer Einstellung ein Bild hinterlegt,
+    meint dieses Bild und nicht das der Figur.
     """
 
     index: int
@@ -115,6 +130,7 @@ class Clip:
     prompt: str = ""
     model: str = ""
     figur_id: str = ""
+    bild_uri: str = ""
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -124,6 +140,7 @@ class Clip:
             "prompt": self.prompt,
             "model": self.model,
             "figur_id": self.figur_id,
+            "bild_uri": self.bild_uri,
         }
 
     @classmethod
@@ -135,6 +152,7 @@ class Clip:
             prompt=str(roh.get("prompt", "")),
             model=str(roh.get("model", "")),
             figur_id=str(roh.get("figur_id", "")),
+            bild_uri=str(roh.get("bild_uri", "")),
         )
 
 

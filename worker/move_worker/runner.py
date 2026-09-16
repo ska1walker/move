@@ -36,6 +36,33 @@ DEFAULT_POLL_INTERVAL_MS = 2000
 DEFAULT_MAX_FAL_CLIPS = 12
 
 
+def pfad_im_datenverzeichnis(basis: Path, uri: str, wofuer: str) -> Path:
+    """Loest eine uri aus der Job-Zeile auf und laesst sie nicht heraus.
+
+    Der einzige Schreiber der Job-Tabelle ist heute das Web, und dessen
+    `pruefeUri` prueft dasselbe. Trotzdem gehoert es HIER hin: der Worker
+    liest aus der Datenbank, nicht aus einem HTTP-Aufruf, und was in einer
+    Zeile steht, hat diese Funktion nicht geschrieben. Eine uri wie
+    `../../etc/passwd` waere sonst eine Datei, die der Worker brav einliest
+    und als Clip verwendet.
+
+    Das schliesst eine Luecke, die es schon vorher gab: der frueh vorhandene
+    Zweig fuer `clip.uri` nahm auch absolute Pfade an. Kein Aufrufer nutzt
+    das -- Web und Tests schicken ausschliesslich relative Pfade unterhalb
+    des Datenverzeichnisses -- also kostet die Grenze nichts und der tote
+    Zweig entfaellt.
+    """
+    if not uri or Path(uri).is_absolute():
+        raise ValueError(
+            f"{wofuer}: {uri!r} muss ein Pfad relativ zum Datenverzeichnis sein"
+        )
+    ziel = (basis / uri).resolve()
+    wurzel = basis.resolve()
+    if ziel != wurzel and wurzel not in ziel.parents:
+        raise ValueError(f"{wofuer}: {uri!r} fuehrt aus dem Datenverzeichnis heraus")
+    return ziel
+
+
 def data_dir() -> Path:
     """Das Datenverzeichnis IM Container.
 
@@ -364,9 +391,7 @@ class Worker:
                 pfade.append(self.erzeuge_clip(clip, template, plan, i, basis))
                 continue
 
-            quelle = Path(clip.uri)
-            if not quelle.is_absolute():
-                quelle = basis / clip.uri
+            quelle = pfad_im_datenverzeichnis(basis, clip.uri, f"Clip {i} ({clip.source})")
             if not quelle.is_file():
                 raise FileNotFoundError(
                     f"Clip {i} ({clip.source}): {quelle} gibt es nicht"
@@ -426,6 +451,23 @@ class Worker:
                         f"{figur.referenz_uri}, dort liegt keine Datei. Ohne das Bild "
                         f"waere die Einstellung bezahlt und inkonsistent."
                     )
+
+        # BILD FUER DIESE EINE EINSTELLUNG. Es gewinnt gegen das Bild der
+        # Figur, weil das Spezifischere gewinnt: wer hier ein Bild hinterlegt,
+        # meint dieses und nicht das der Figur. Beschreibung und Seed der
+        # Figur bleiben trotzdem in Kraft -- die Person soll dieselbe sein,
+        # nur die Bildvorgabe wechselt.
+        if clip.bild_uri:
+            eigenes = pfad_im_datenverzeichnis(basis, clip.bild_uri, f"clips[{index}].bild_uri")
+            if not eigenes.is_file():
+                # Genauso hart wie beim Bild der Figur: still ohne Bild
+                # weiterlaufen heisst bezahlt und nicht das, was gewollt war.
+                raise FileNotFoundError(
+                    f"clips[{index}] verweist auf das Bild {clip.bild_uri}, dort liegt "
+                    f"keine Datei. Ohne das Bild waere die Einstellung bezahlt und "
+                    f"nicht die, die gemeint war."
+                )
+            referenz_bild = eigenes
 
         # Aufgerundet auf ganze Sekunden: Modelle nehmen meist ganzzahlige
         # Laengen, und zu kurz waere teuer -- der Assembler lehnt den Clip

@@ -240,6 +240,129 @@ class TestFigurLandetImAufruf(unittest.TestCase):
         self.assertEqual(doppel.aufrufe, [])
 
 
+class TestBildProEinstellung(unittest.TestCase):
+    """Ein Bild fuer GENAU DIESE Einstellung, nicht fuer die Figur.
+
+    Die beiden Wege meinen Verschiedenes: `figur_id` ist ein Bild fuer viele
+    Einstellungen (Konsistenz), `bild_uri` ist ein Bild fuer eine (Abwechslung).
+    Zusammen gewinnt das Spezifischere -- das Bild der Einstellung -- waehrend
+    Beschreibung und Seed der Figur in Kraft bleiben. Genau diese Aufteilung
+    steht hier.
+    """
+
+    def setUp(self):
+        self.d = Path(tempfile.mkdtemp())
+        (self.d / "uploads").mkdir()
+        (self.d / "uploads" / "figur.png").write_bytes(b"\x89PNG" + b"F" * 64)
+        (self.d / "uploads" / "szene.png").write_bytes(b"\x89PNG" + b"S" * 64)
+
+        self.repo = Repository(db_path=self.d / "db" / "move.sqlite3")
+        self.repo.connect()
+        self.repo.migrate()
+        self.figur_id = self.repo.save_figur(
+            Figur(
+                id="",
+                name="Mara",
+                beschreibung="Frau, Ende dreissig",
+                referenz_uri="uploads/figur.png",
+            )
+        )
+        self.worker = Worker(repo=self.repo, settings=RenderSettings())
+
+    def _argumente(self, clip: Clip) -> dict:
+        helfer = TestFigurLandetImAufruf._erzeuge
+        doppel = FalDoppel({"video": {"url": "https://fal.example/v.mp4"}})
+        try:
+            helfer(self, clip, doppel)
+        except Exception:
+            # Der Download der Beispiel-URL scheitert ohne Netz. Der Aufruf an
+            # fal liegt davor, und der ist hier die Messung.
+            pass
+        self.assertTrue(doppel.aufrufe, "es gab keinen fal-Aufruf")
+        return doppel.aufrufe[0][1]
+
+    def _modell(self, clip: Clip) -> str:
+        helfer = TestFigurLandetImAufruf._erzeuge
+        doppel = FalDoppel({"video": {"url": "https://fal.example/v.mp4"}})
+        try:
+            helfer(self, clip, doppel)
+        except Exception:
+            pass
+        return doppel.aufrufe[0][0]
+
+    def test_bild_der_einstellung_geht_mit(self):
+        argumente = self._argumente(
+            Clip(index=0, source="fal", prompt="p", bild_uri="uploads/szene.png")
+        )
+        self.assertEqual(argumente["image_url"], "https://fal.example/szene.png")
+
+    def test_bild_der_einstellung_gewinnt_gegen_das_der_figur(self):
+        argumente = self._argumente(
+            Clip(
+                index=0,
+                source="fal",
+                prompt="p",
+                figur_id=self.figur_id,
+                bild_uri="uploads/szene.png",
+            )
+        )
+        self.assertEqual(argumente["image_url"], "https://fal.example/szene.png")
+
+    def test_beschreibung_und_seed_der_figur_bleiben(self):
+        """Das Bild wechselt, die Person nicht."""
+        argumente = self._argumente(
+            Clip(
+                index=0,
+                source="fal",
+                prompt="sie geht weiter",
+                figur_id=self.figur_id,
+                bild_uri="uploads/szene.png",
+            )
+        )
+        self.assertTrue(argumente["prompt"].startswith("Frau, Ende dreissig."))
+        self.assertEqual(
+            argumente["seed"], self.repo.get_figur(self.figur_id).wirksamer_seed()
+        )
+
+    def test_bild_der_einstellung_waehlt_das_bildmodell(self):
+        """Sonst ginge es an einen Text-zu-Video-Endpunkt: bezahlt und wirkungslos."""
+        from move_worker.generierung import DEFAULT_BILD_MODEL, DEFAULT_MODEL
+
+        mit = self._modell(Clip(index=0, source="fal", prompt="p", bild_uri="uploads/szene.png"))
+        ohne = self._modell(Clip(index=0, source="fal", prompt="p"))
+        self.assertEqual(mit, DEFAULT_BILD_MODEL)
+        self.assertEqual(ohne, DEFAULT_MODEL)
+
+    def test_fehlendes_bild_scheitert_vor_dem_bezahlten_aufruf(self):
+        doppel = FalDoppel({"video": {"url": "https://fal.example/v.mp4"}})
+        clip = Clip(index=0, source="fal", prompt="p", bild_uri="uploads/gibtsnicht.png")
+        with self.assertRaises(FileNotFoundError):
+            TestFigurLandetImAufruf._erzeuge(self, clip, doppel)
+        self.assertEqual(doppel.aufrufe, [])
+
+    def test_bild_kommt_nicht_aus_dem_datenverzeichnis_heraus(self):
+        """Der Worker liest aus der Datenbank, nicht aus einem HTTP-Aufruf.
+
+        Was in einer Zeile steht, hat er nicht selbst geschrieben. Ohne diese
+        Grenze waere `../` eine beliebige Datei, die als Referenzbild zu fal
+        hochgeladen wird -- also nach draussen geht.
+        """
+        (self.d.parent / "geheim.png").write_bytes(b"\x89PNG" + b"X" * 32)
+        doppel = FalDoppel({"video": {"url": "https://fal.example/v.mp4"}})
+        clip = Clip(index=0, source="fal", prompt="p", bild_uri="../geheim.png")
+        with self.assertRaises(ValueError) as fehler:
+            TestFigurLandetImAufruf._erzeuge(self, clip, doppel)
+        self.assertIn("Datenverzeichnis", str(fehler.exception))
+        self.assertEqual(doppel.aufrufe, [])
+
+    def test_absoluter_pfad_wird_abgelehnt(self):
+        doppel = FalDoppel({"video": {"url": "https://fal.example/v.mp4"}})
+        clip = Clip(index=0, source="fal", prompt="p", bild_uri="/etc/passwd")
+        with self.assertRaises(ValueError):
+            TestFigurLandetImAufruf._erzeuge(self, clip, doppel)
+        self.assertEqual(doppel.aufrufe, [])
+
+
 class TestBildUploadNurEinmal(unittest.TestCase):
     def test_dasselbe_bild_wird_einmal_hochgeladen(self):
         d = Path(tempfile.mkdtemp())

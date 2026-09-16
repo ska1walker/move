@@ -23,16 +23,16 @@ type Wunsch = {
 };
 
 /** Prueft, dass eine uri im Datenverzeichnis liegt und die Datei da ist. */
-function pruefeUri(index: number, uri: string): void {
+function pruefeUri(index: number, uri: string, feld = 'uri'): void {
   if (uri === '' || isAbsolute(uri)) {
-    throw new Error(`clips[${index}].uri muss ein Pfad relativ zum Datenverzeichnis sein`);
+    throw new Error(`clips[${index}].${feld} muss ein Pfad relativ zum Datenverzeichnis sein`);
   }
   const normal = normalize(uri);
   if (normal.startsWith('..')) {
-    throw new Error(`clips[${index}].uri fuehrt aus dem Datenverzeichnis heraus`);
+    throw new Error(`clips[${index}].${feld} fuehrt aus dem Datenverzeichnis heraus`);
   }
   if (!existsSync(join(datenVerzeichnis(), normal))) {
-    throw new Error(`clips[${index}].uri: ${normal} gibt es nicht`);
+    throw new Error(`clips[${index}].${feld}: ${normal} gibt es nicht`);
   }
 }
 
@@ -73,6 +73,7 @@ export async function POST(request: Request) {
           prompt?: unknown;
           model?: unknown;
           figur_id?: unknown;
+          bild_uri?: unknown;
         };
         const index = typeof c.index === 'number' ? c.index : i;
         const source = typeof c.source === 'string' ? c.source : 'placeholder';
@@ -80,6 +81,7 @@ export async function POST(request: Request) {
         const prompt = typeof c.prompt === 'string' ? c.prompt.trim() : '';
         const model = typeof c.model === 'string' ? c.model.trim() : '';
         const figurId = typeof c.figur_id === 'string' ? c.figur_id.trim() : '';
+        const bildUri = typeof c.bild_uri === 'string' ? c.bild_uri.trim() : '';
 
         if (source === 'fal') {
           // Erst die Frage, ob es ueberhaupt gehen kann. Ohne hinterlegten
@@ -108,7 +110,21 @@ export async function POST(request: Request) {
               throw new Error(`clips[${index}]: keine Figur mit der id ${figurId}`);
             }
           }
+          // Das Bild dieser Einstellung genauso frueh pruefen wie die Figur:
+          // ein Pfad, der ins Leere zeigt, wuerde erst im Worker auffallen --
+          // nachdem die Einstellungen davor bezahlt sind.
+          if (bildUri !== '') {
+            pruefeUri(index, bildUri, 'bild_uri');
+          }
         } else {
+          if (bildUri !== '') {
+            // Wie bei figur_id: ein Bild an einem Platzhalter tut nichts, und
+            // still ignorieren sieht aus, als waere es gesetzt.
+            throw new Error(
+              `clips[${index}]: bild_uri gilt nur fuer source 'fal'; ` +
+                `bei source '${source}' hat es keine Wirkung`,
+            );
+          }
           if (figurId !== '') {
             // Eine Figur an einem Platzhalter oder einer eigenen Datei tut
             // nichts. Still ignorieren waere schlimmer als ablehnen: es sieht
@@ -123,7 +139,7 @@ export async function POST(request: Request) {
           }
         }
 
-        return { index, source, uri, prompt, model, figur_id: figurId };
+        return { index, source, uri, prompt, model, figur_id: figurId, bild_uri: bildUri };
       });
 
       const indizes = new Set(clips.map((c) => c.index));

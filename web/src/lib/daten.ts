@@ -37,6 +37,19 @@ export type Clip = {
    * ein neues Feld kostet damit keine DDL, und aeltere Jobs bleiben lesbar.
    */
   figur_id?: string;
+
+  /**
+   * Referenzbild fuer GENAU DIESE Einstellung, Pfad relativ zum
+   * Datenverzeichnis.
+   *
+   * Der Unterschied zu `figur_id` ist nicht technisch, sondern inhaltlich:
+   * eine Figur ist ein Bild fuer VIELE Einstellungen (dieselbe Person
+   * mehrfach), `bild_uri` ist ein Bild fuer EINE (jede Szene ihr eigenes).
+   * Beides zusammen geht: die Figur traegt dann Beschreibung und Seed, das
+   * Bild der Einstellung gewinnt als Bildvorgabe -- das Spezifischere
+   * gewinnt.
+   */
+  bild_uri?: string;
 };
 
 export type Cut = {

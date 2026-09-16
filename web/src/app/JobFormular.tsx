@@ -61,6 +61,10 @@ export default function JobFormular({
   // Figur je Einstellung. Leer heisst: keine, dann entscheidet allein der
   // Prompt -- und die Person sieht in jeder Einstellung anders aus.
   const [figurIds, setFigurIds] = useState<string[]>([]);
+  // Bild je Einstellung, noch als Datei im Browser. Hochgeladen wird erst
+  // beim Anlegen -- wer das Formular verwirft, soll nichts hinterlassen
+  // haben. Dieselbe Reihenfolge wie beim Clip-Upload.
+  const [bilder, setBilder] = useState<(File | null)[]>([]);
   const [model, setModel] = useState('');
   const [laeuft, setLaeuft] = useState(false);
   const [anteil, setAnteil] = useState<number | null>(null);
@@ -79,6 +83,9 @@ export default function JobFormular({
     );
     setFigurIds((alt) =>
       Array.from({ length: vorlage.shot_count }, (_, i) => alt[i] ?? ''),
+    );
+    setBilder((alt) =>
+      Array.from({ length: vorlage.shot_count }, (_, i) => alt[i] ?? null),
     );
   }, [vorlage]);
 
@@ -102,6 +109,7 @@ export default function JobFormular({
         prompt?: string;
         model?: string;
         figur_id?: string;
+        bild_uri?: string;
       }[] = [];
 
       if (quelle === 'upload') {
@@ -121,12 +129,33 @@ export default function JobFormular({
         setAnteil(null);
         setWovon('');
       } else if (quelle === 'fal') {
+        // Die Bilder der Einstellungen zuerst, EINZELN und mit Fortschritt.
+        // Reihenfolge ist Absicht: scheitert ein Upload, ist noch kein Job
+        // angelegt und noch kein Aufruf bezahlt.
+        const bildUris: string[] = [];
+        const zuLaden = bilder.filter(Boolean).length;
+        let geladen = 0;
+        for (const [i, datei] of bilder.entries()) {
+          if (!datei) {
+            bildUris[i] = '';
+            continue;
+          }
+          geladen += 1;
+          setWovon(`${datei.name} (Bild ${geladen} von ${zuLaden})`);
+          setAnteil(0);
+          const ergebnis = await hochladen(datei, setAnteil);
+          bildUris[i] = ergebnis.uri;
+        }
+        setAnteil(null);
+        setWovon('');
+
         clips = prompts.map((p, i) => ({
           index: i,
           source: 'fal' as const,
           prompt: p.trim(),
           model: model.trim(),
           figur_id: figurIds[i] ?? '',
+          bild_uri: bildUris[i] ?? '',
         }));
       }
 
@@ -251,13 +280,15 @@ export default function JobFormular({
         <div className="feld">
           <span className="leise">
             Je Einstellung eine Beschreibung. Die Bildgröße aus dem Template wird
-            angehängt.
+            angehängt. Ein Bild kannst du auf zwei Wegen mitgeben, und sie meinen
+            Verschiedenes: <strong>ein Bild pro Einstellung</strong> gibt jeder Szene
+            ihr eigenes Motiv, <strong>eine Figur</strong> hält dieselbe Person über
+            mehrere Einstellungen gleich.
             {figuren.length > 0
-              ? ' Dieselbe Figur in mehreren Einstellungen lässt die Person gleich aussehen: ' +
-                'ihre Beschreibung, ihr Referenzbild und ihr Seed gehen dann in jede dieser ' +
-                'Einstellungen ein.'
-              : ' Für eine Person, die in mehreren Einstellungen gleich aussieht, zuerst unten ' +
-                'eine Figur anlegen — sonst würfelt das Modell jede Einstellung neu.'}
+              ? ' Beides zusammen geht: die Figur trägt dann Beschreibung und Seed, ' +
+                'das Bild der Einstellung gewinnt als Bildvorgabe.'
+              : ' Für eine Person, die in mehreren Einstellungen gleich aussieht, zuerst ' +
+                'oben eine Figur anlegen — sonst würfelt das Modell jede Einstellung neu.'}
           </span>
 
           {vorlage.einstellungen.map((e) => (
@@ -291,6 +322,35 @@ export default function JobFormular({
                   })
                 }
               />
+
+              {/* Bild NUR fuer diese Einstellung. Steht bewusst neben der
+                  Figur und nicht statt ihr: die Figur haelt eine Person
+                  ueber mehrere Einstellungen gleich, dieses Bild gibt einer
+                  einzelnen ihr eigenes Motiv. Sind beide gesetzt, gewinnt
+                  dieses hier als Bildvorgabe, waehrend Beschreibung und Seed
+                  der Figur weiter gelten -- das Spezifischere gewinnt.
+
+                  type="file" braucht kein autoComplete, eine Dateiauswahl
+                  wird nicht ausgefuellt. Der CI-Guard weiss das. */}
+              <label className="feld" htmlFor={`bild-${e.index}`}>
+                <span className="leise">
+                  Bild nur für diese Einstellung (PNG, JPEG, WebP) — optional
+                  {bilder[e.index] ? ` · ${bilder[e.index]!.name}` : ''}
+                </span>
+                <input
+                  id={`bild-${e.index}`}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp"
+                  disabled={laeuft}
+                  onChange={(ev) =>
+                    setBilder((alt) => {
+                      const neu = [...alt];
+                      neu[e.index] = ev.target.files?.[0] ?? null;
+                      return neu;
+                    })
+                  }
+                />
+              </label>
 
               {figuren.length > 0 && (
                 <label className="feld" htmlFor={`figur-${e.index}`}>

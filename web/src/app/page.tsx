@@ -100,6 +100,25 @@ export default function Seite() {
         </section>
       )}
 
+      {/* FIGUREN STEHEN VOR "JOB ANLEGEN", und das ist keine Kosmetik: die
+          Auswahl "Figur in dieser Einstellung" im Job-Formular erscheint erst,
+          wenn mindestens eine Figur existiert. Vorher stand dieser Abschnitt
+          UNTER dem Formular -- wer die Seite von oben nach unten abarbeitete,
+          legte also einen Job an und sah die Figuren erst danach. Die Seite
+          folgt jetzt dem Ablauf und nicht der Reihenfolge, in der die
+          Abschnitte entstanden sind. */}
+      <section className="block">
+        <h2>Figuren</h2>
+        <Figuren
+          figuren={personen.map((f) => ({
+            id: f.id,
+            name: f.name,
+            beschreibung: f.beschreibung,
+            referenz_uri: f.referenz_uri,
+          }))}
+        />
+      </section>
+
       <section className="block">
         <h2>Job anlegen</h2>
         {vorlagen.length === 0 ? (
@@ -135,18 +154,6 @@ export default function Seite() {
             }))}
           />
         )}
-      </section>
-
-      <section className="block">
-        <h2>Figuren</h2>
-        <Figuren
-          figuren={personen.map((f) => ({
-            id: f.id,
-            name: f.name,
-            beschreibung: f.beschreibung,
-            referenz_uri: f.referenz_uri,
-          }))}
-        />
       </section>
 
       <section className="block">

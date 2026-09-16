@@ -9,11 +9,11 @@ Kein Modell, keine Inferenz. Nur Standardbibliothek und ffmpeg.
 ```bash
 # Baukontext ist das Repo-Wurzelverzeichnis, nicht worker/ --
 # db/schema.sql liegt ausserhalb und wird von Web und Worker gelesen.
-docker build -f worker/Dockerfile -t moveworker:26.9.7 .
+docker build -f worker/Dockerfile -t moveworker:26.9.8 .
 
-docker run --rm -v /pfad/zu/appdata:/app/data moveworker:26.9.7 \
+docker run --rm -v /pfad/zu/appdata:/app/data moveworker:26.9.8 \
   enqueue --template /app/examples/beat-8s.json
-docker run --rm -v /pfad/zu/appdata:/app/data moveworker:26.9.7
+docker run --rm -v /pfad/zu/appdata:/app/data moveworker:26.9.8
 ```
 
 Der Standardbefehl ist `work`: die Polling-Schleife auf der Job-Tabelle. Der
@@ -286,6 +286,33 @@ Egress-Proxy gesperrt (`CONNECT tunnel failed, response 403`). Die Antwort
 wird deshalb tolerant nach einer URL durchsucht (`video`, `output`, `file`,
 `result`, `url`, auch verschachtelt und in Listen). Findet sich keine,
 scheitert der Job **mit der Antwort im Text** statt zu raten.
+
+### Zwei Wege zu einem Referenzbild
+
+Sie sehen gleich aus und meinen Verschiedenes:
+
+| Feld im Clip | Bedeutung |
+|---|---|
+| `figur_id` | ein Bild fuer VIELE Einstellungen. Dieselbe Person mehrfach -- Konsistenz |
+| `bild_uri` | ein Bild fuer EINE Einstellung. Jede Szene ihr Motiv -- Abwechslung |
+
+Beides zusammen ist der nuetzliche Fall: die Figur traegt Beschreibung und
+Seed, `bild_uri` gewinnt als Bildvorgabe. Begruendung ist die allgemeine Regel,
+dass das Spezifischere gewinnt -- wer an einer Einstellung ein Bild
+hinterlegt, meint dieses und nicht das der Figur.
+
+Beide Felder stehen im JSON von `render_job.clips`, nicht in einer Spalte:
+die Spalte ist Text, ein neues Feld kostet damit keine DDL, und aeltere Jobs
+bleiben lesbar, weil jedes Feld einen Standard hat.
+
+**Beide Pfade sind auf das Datenverzeichnis begrenzt**
+(`pfad_im_datenverzeichnis`). Das Web prueft dasselbe, aber die Grenze gehoert
+auch hierhin: der Worker liest aus der Datenbank, nicht aus einem
+HTTP-Aufruf, und was in einer Zeile steht, hat er nicht geschrieben. Eine uri
+wie `../../etc/passwd` waere sonst eine Datei, die er einliest -- und als
+Referenzbild zu fal hochlaedt, also nach draussen gibt. Gemessen: ohne den
+Waechter erreichen `/etc/passwd` und `../geheim.png` einen bezahlten Aufruf;
+zwei Tests schlagen fehl, wenn man ihn entfernt.
 
 Zwei Modelle, weil die Wahl nicht kosmetisch ist: `fal-ai/ltx-video`
 existiert, ist aber ein **Text**-zu-Video-Endpunkt und hat keinen Eingang fuer

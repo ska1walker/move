@@ -22,7 +22,7 @@ scripts/check-chart.sh         Vorab-Guards, aus dem Insilo-Original umgebaut
 scripts/make-icon.py           erzeugt icon.png reproduzierbar, ohne Bildbibliothek
 icon.png                       512x512, Hanseatenblau + Gold
 OlaresManifest.yaml            Root-Manifest (Store)
-move/Chart.yaml                Version 26.9.7
+move/Chart.yaml                Version 26.9.8
 move/OlaresManifest.yaml       Chart-Manifest, byteweise identisch zum Root
 move/values.yaml               keine Pins, keine Secrets
 move/values-olares-stub.yaml   Stub für helm lint/template
@@ -44,8 +44,8 @@ Beide Images bauen mit dem **Repo-Wurzelverzeichnis** als Kontext, weil
 `db/schema.sql` von Web und Worker gemeinsam gelesen wird:
 
 ```bash
-docker build -f worker/Dockerfile -t moveworker:26.9.7 .
-docker build -f web/Dockerfile    -t move:26.9.7 .
+docker build -f worker/Dockerfile -t moveworker:26.9.8 .
+docker build -f web/Dockerfile    -t move:26.9.8 .
 ```
 
 Chart-Stand: ein Entrance auf `move` (Port 3000), Worker `moveworker` ohne
@@ -66,10 +66,12 @@ Image-Tags aus `.Chart.AppVersion`, kein GPU-Bedarf in v0.
    und legt daraus ein Template ab. Das Video selbst wird nicht Teil des
    Ergebnisses — nur seine Zeitstempel.
 2. **Figur anlegen**, wenn dieselbe Person in mehreren Einstellungen
-   auftreten soll. Name, Beschreibung, Referenzbild.
+   auftreten soll. Name, Beschreibung, Referenzbild. Steht in der Oberfläche
+   **vor** „Job anlegen", weil die Auswahl je Einstellung erst erscheint, wenn
+   es eine Figur gibt.
 3. **Job anlegen**: Template wählen, Quelle der Clips wählen (Platzhalter,
    eigene MP4s oder fal.ai), bei fal je Einstellung eine Beschreibung und
-   optional eine Figur.
+   optional ein eigenes Bild und/oder eine Figur.
 4. **Ergebnis abspielen.** Der fertige Schnitt liegt als MP4 in der Liste.
 
 ### Wo der fal.ai-Schlüssel hingehört, und welches Modell läuft
@@ -77,11 +79,12 @@ Image-Tags aus `.Chart.AppVersion`, kein GPU-Bedarf in v0.
 | Frage | Antwort |
 |---|---|
 | Wo trage ich den Schlüssel ein? | In die **App-Einstellungen von Olares**, Feld `FAL_KEY` — dasselbe, das die Installation fragt. **Nicht** in moves Oberfläche: das Web erfährt nur ja/nein (`MOVE_FAL_BEREIT`), den Schlüssel hält allein der Worker. |
-| Wo kommt der Prompt hin? | Im Job-Formular, Quelle *Von fal.ai erzeugen*: **eine Beschreibung je Einstellung**, dazu optional eine Figur. Die Bildgröße aus dem Template hängt move selbst an. |
-| Woher weiß fal, welche KI? | **Es weiß es nicht — move sagt es.** Der Modellname ist das erste Argument des Aufrufs; fal.ai ist eine Plattform mit vielen Modellen. Der Name kommt aus der ersten gefüllten Quelle: Feld im Formular → `MOVE_FAL_MODEL` → `fal-ai/ltx-video`. |
+| Wo kommt der Prompt hin? | Im Job-Formular, Quelle *Von fal.ai erzeugen*: **eine Beschreibung je Einstellung**. Die Bildgröße aus dem Template hängt move selbst an. |
+| Wo kommen die Fotos hin? | **Auf zwei Wegen, und sie meinen Verschiedenes.** Im Job-Formular hat jede Einstellung ein Bildfeld — ein Bild für *diese* Szene. Im Abschnitt *Figuren* hängt ein Bild an einer Person und wirkt in *jeder* Einstellung, die sie nennt. Beides zusammen: die Figur trägt Beschreibung und Seed, das Bild der Einstellung gewinnt als Bildvorgabe. |
+| Woher weiß fal, welche KI? | **Es weiß es nicht — move sagt es.** Der Modellname ist das erste Argument des Aufrufs; fal.ai ist eine Plattform mit vielen Modellen. Der Name kommt aus der ersten gefüllten Quelle: Feld im Formular → App-Einstellung → eingebaute Vorgabe. Die App-Einstellung und die Vorgabe sind **zwei**, weil der Bildpfad einen anderen Endpunkt braucht: ohne Bild `MOVE_FAL_MODEL` bzw. `fal-ai/ltx-video`, mit Bild `MOVE_FAL_BILD_MODEL` bzw. `fal-ai/ltx-2/image-to-video`. |
 
-Alle drei Antworten stehen auch in der Oberfläche, aufklappbar an der Stelle,
-wo die Frage entsteht.
+Alle Antworten stehen auch in der Oberfläche, aufklappbar an der Stelle, wo die
+Frage entsteht.
 
 ### Konsistente Personen — wie das funktioniert
 
@@ -92,7 +95,7 @@ bündelt genau diese drei:
 
 | Hebel | Wirkung |
 |---|---|
-| **Referenzbild** | der starke Hebel, über ein Bild-zu-Video-Modell. Wird je Job einmal zu fal geladen, nicht je Einstellung |
+| **Referenzbild** | der starke Hebel, über ein Bild-zu-Video-Modell. Wird je Job einmal zu fal geladen, nicht je Einstellung. Ein Bild an der **Einstellung** schlägt es — dann wechselt das Motiv, während Beschreibung und Seed die Person halten |
 | **Beschreibung** | wandert **vor** den Prompt der Einstellung. Schwach, aber kostenlos |
 | **Seed** | dieselbe Zahl je Figur, im Worker stabil aus der id abgeleitet (31 Bit, weil manche Modelle größere Zahlen ablehnen) |
 
@@ -289,7 +292,7 @@ Weil eine App nicht dadurch in den Marktplatz kommt, dass sie hier im Repo
 liegt. Eine **Market Source ist ein eigener Webdienst** (bei AImighty:
 Cloudflare Pages, Repo `bayerhazard/aimighty-market`). Sie listet die App
 unter `/api/v1/appstore/info` und liefert das Chart unter
-`/api/v1/applications/move/chart?fileName=move-26.9.7.tgz`. Das Chart steckt
+`/api/v1/applications/move/chart?fileName=move-26.9.8.tgz`. Das Chart steckt
 dort als base64 in einer Tabelle. In **move ist noch nichts davon eingetragen** —
 dieses Repo enthält nur das Chart selbst.
 
@@ -301,8 +304,8 @@ dieses Repo enthält nur das Chart selbst.
 
 | Datei | wohin |
 |---|---|
-| `dist/move-26.9.7.tgz` | das gepackte Chart |
-| `dist/move-26.9.7.tgz.base64` | eine Zeile, als Wert unter dem Schlüssel `"move-26.9.7.tgz"` |
+| `dist/move-26.9.8.tgz` | das gepackte Chart |
+| `dist/move-26.9.8.tgz.base64` | eine Zeile, als Wert unter dem Schlüssel `"move-26.9.8.tgz"` |
 | `dist/markteintrag.json` | die Metadatenfelder, aus dem Manifest gelesen |
 
 Der CI-Job **Chart-Paket** führt das bei jedem Push mit echtem Helm aus und

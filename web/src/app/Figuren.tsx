@@ -256,9 +256,10 @@ export default function Figuren({ figuren }: { figuren: FigurAnzeige[] }) {
           <strong>nicht gemessen</strong>: fal.ai und seine Doku sind aus der
           Entwicklungsumgebung gesperrt. Der erste echte Auftrag klärt das.
           Sieht das Ergebnis danach aus, als würde die Referenz als Startbild
-          eingesetzt, dann lohnt es, je Einstellung eine eigene Figur mit
-          passendem Bild anzulegen — das geht heute schon, weil die Figur pro
-          Einstellung gewählt wird.
+          eingesetzt, dann gib der Einstellung ihr eigenes Bild: im Job-Formular
+          hat jede Einstellung ein Feld dafür, und es gewinnt gegen das Bild der
+          Figur. Beschreibung und Seed der Figur bleiben dabei in Kraft, die
+          Person bleibt also dieselbe — nur das Motiv wechselt.
         </p>
 
         <p>
