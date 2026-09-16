@@ -150,11 +150,10 @@ jetzt korrigiert.
 
 | | Stand |
 |---|---|
-| Chart im Katalog | **26.9.5** ausgeliefert: HTTP 200, 9463 Byte, einmal gzippt, `type: system` drin, Render 3 Dokumente alle mit `apiVersion` und `kind` |
-| Images auf ghcr | 26.9.1 bis 26.9.5, alle anonym HTTP 200 |
-| Katalogeintrag | 26.9.5, live gemessen (PR #77), Hash `98a16f17…` |
-| Chart 26.9.7 | gepackt und geprüft, noch nicht veröffentlicht |
-| `running` auf der Box | **nicht gemessen** — Weg A in `docs/installieren.md` |
+| Chart im Katalog | **26.9.7** ausgeliefert: HTTP 200, 11007 Byte, 7 Dateien, einmal gzippt, `type: system` drin, Render 3 Dokumente alle mit `apiVersion` und `kind` |
+| Images auf ghcr | 26.9.1 bis 26.9.7, alle anonym HTTP 200 |
+| Katalogeintrag | 26.9.7, live gemessen (PR #79, rebase gemergt), Hash `0078b20e…` |
+| `running` auf der Box | **26.9.3** — gemessen ist nur diese. 26.9.4 bis 26.9.7 sind veröffentlicht, aber dort nie gelaufen. Weg A in `docs/installieren.md` |
 
 Vier Guards sind daraus entstanden, jeder dort, wo der Fehler durchkam:
 
