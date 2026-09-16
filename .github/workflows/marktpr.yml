@@ -55,6 +55,10 @@ on:
         description: 'Nur vorbereiten, nicht pushen und keinen PR oeffnen'
         type: boolean
         default: true
+      mergen:
+        description: 'Den offenen Pull Request mergen (umgeht das Review des Repo-Eigners)'
+        type: boolean
+        default: false
       deploy:
         description: 'NACH dem Merge: die Market Source deployen (aendert den Katalog fuer jede Box)'
         type: boolean
@@ -219,7 +223,14 @@ jobs:
           # origin ist das, was der vorige Schritt bestimmt hat: die Quelle
           # oder der Fork.
           echo "Push nach ${{ steps.weg.outputs.ziel }}, PR-Kopf $kopf"
-          git -C dist/markt push -u origin "$branch"
+          # --force-with-lease, weil ein zweiter Lauf sonst scheitert: der
+          # Branch wird jedesmal frisch von upstream/main abgezweigt, und
+          # `helm package` ist ueber Laeufe hinweg nicht bitgleich -- der
+          # Commit hat also eine andere Id bei gleichem Inhalt, und ein
+          # normaler Push waere non-fast-forward. Ueberschrieben wird nur ein
+          # Branch, den dieser Workflow selbst angelegt hat; --with-lease
+          # sorgt dafuer, dass fremde Commits darauf den Push stoppen.
+          git -C dist/markt push --force-with-lease -u origin "$branch"
 
           # Schon offen? Dann hat der Push gereicht, ein zweiter PR waere
           # Rauschen. Beim Fork-Weg ist der Kopf <eigner>:<branch>.
@@ -291,6 +302,53 @@ jobs:
             --head "$kopf" \
             --title "move $version in den Katalog" \
             --body-file /tmp/pr.md
+
+      - name: Pull Request mergen
+        # Eigener Haken, weil das den Review des Repo-Eigners UMGEHT. Der PR
+        # ist der Ort, an dem er die Aenderung sieht; ein Merge von aussen
+        # nimmt ihm diesen Schritt ab, ob er will oder nicht.
+        if: ${{ inputs.trockenlauf == false && inputs.mergen == true }}
+        env:
+          GH_TOKEN: ${{ secrets.MARKT_TOKEN }}
+        run: |
+          QUELLE=bayerhazard/aimighty-market
+          kopf="${{ steps.weg.outputs.kopf }}"
+
+          nr="$(gh pr list --repo "$QUELLE" --head "$kopf" --state open \
+                  --json number --jq '.[0].number // empty')"
+          if [ -z "$nr" ]; then
+            echo "Kein offener Pull Request fuer $kopf. Nichts zu mergen."
+            exit 0
+          fi
+          echo "Pull Request #$nr"
+
+          # Nicht raten, welche Merge-Art das Repo erlaubt -- fragen. Ein
+          # `gh pr merge --squash` gegen ein Repo, das nur Merge-Commits
+          # zulaesst, scheitert mit einer Meldung, die wie ein Rechteproblem
+          # aussieht.
+          erlaubt="$(gh api "repos/$QUELLE" \
+            --jq '[(if .allow_rebase_merge then "--rebase" else empty end),
+                   (if .allow_squash_merge then "--squash" else empty end),
+                   (if .allow_merge_commit then "--merge"  else empty end)] | .[0] // empty')"
+          if [ -z "$erlaubt" ]; then
+            echo "Das Repo erlaubt keine der drei Merge-Arten -- von Hand mergen."
+            exit 1
+          fi
+          echo "Merge-Art: $erlaubt"
+
+          gh pr merge "$nr" --repo "$QUELLE" $erlaubt
+          echo "#$nr ist gemergt."
+
+          # Nachmessen statt der Meldung glauben: steht der Eintrag jetzt im
+          # Standardbranch?
+          git -C dist/markt fetch -q origin main
+          if git -C dist/markt show origin/main:functions/_lib.ts \
+               | grep -q "\"move-${{ steps.weg.outputs.version }}.tgz\""; then
+            echo "Bestaetigt: move-${{ steps.weg.outputs.version }}.tgz liegt im Standardbranch."
+          else
+            echo "WARNUNG: der Merge wurde gemeldet, aber im Standardbranch steht der Eintrag nicht."
+            exit 1
+          fi
 
       - name: Trockenlauf-Hinweis
         if: ${{ inputs.trockenlauf == true }}
