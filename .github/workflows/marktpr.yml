@@ -59,10 +59,6 @@ on:
         description: 'Den offenen Pull Request mergen (umgeht das Review des Repo-Eigners)'
         type: boolean
         default: false
-      deploy:
-        description: 'NACH dem Merge: die Market Source deployen (aendert den Katalog fuer jede Box)'
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -357,77 +353,3 @@ jobs:
           echo "Der Patch haengt als Artefakt 'marktpatch' an diesem Lauf."
           echo "Fuer den echten Lauf den Haken bei 'Nur vorbereiten' ENTFERNEN"
           echo "und vorher das Secret MARKT_TOKEN setzen."
-
-  deploy:
-    name: Market Source deployen
-    # Eigener Job, eigener Haken. Ein Deploy aendert, was JEDE
-    # synchronisierende Box im Katalog sieht -- das ist der Schritt, der nach
-    # aussen wirkt, und er soll nicht als Nebenwirkung des PR-Jobs passieren.
-    #
-    # Deployt wird der STANDARDBRANCH der Market Source, also der Stand NACH
-    # dem Merge -- nie der PR-Branch. Sonst waere move live, bevor jemand den
-    # PR gesehen hat.
-    if: ${{ inputs.deploy == true }}
-    needs: marktpr
-    runs-on: ubuntu-latest
-    steps:
-      - name: Secrets vorhanden?
-        env:
-          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
-          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
-        run: |
-          fehlt=0
-          [ -z "$CF_API_TOKEN" ]  && { echo "Secret CF_API_TOKEN fehlt";  fehlt=1; }
-          [ -z "$CF_ACCOUNT_ID" ] && { echo "Secret CF_ACCOUNT_ID fehlt"; fehlt=1; }
-          [ "$fehlt" -eq 0 ] || exit 1
-          echo "Beide Cloudflare-Secrets sind gesetzt."
-
-      # Gebraucht fuer die Versionsnummer aus move/Chart.yaml, gegen die
-      # geprueft wird, ob der PR schon gemergt ist.
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Standardbranch der Market Source holen
-        env:
-          GH_TOKEN: ${{ secrets.MARKT_TOKEN }}
-        run: |
-          gh auth setup-git
-          git clone --depth 1 https://github.com/bayerhazard/aimighty-market markt
-          cd markt
-          echo "Stand: $(git rev-parse --short HEAD) auf $(git rev-parse --abbrev-ref HEAD)"
-
-      - name: Ist move im Stand enthalten?
-        # Ohne diese Pruefung deployt ein zu frueher Klick den alten Katalog
-        # und das sieht wie ein Fehlschlag aus, der keiner ist.
-        run: |
-          version="$(grep -E '^version:' move/Chart.yaml | awk '{print $2}')"
-          echo "erwartete Version: $version"
-          if grep -q "\"move-${version}.tgz\"" markt/functions/_lib.ts \
-             && grep -q 'move: erzeugt von' markt/functions/_apps.ts; then
-            echo "move $version steht im Standardbranch -- der PR ist gemergt."
-          else
-            echo "move steht NICHT im Standardbranch der Market Source."
-            echo "Der Pull Request ist noch nicht gemergt. Deploy abgebrochen,"
-            echo "damit nicht der alte Katalog ausgerollt wird."
-            exit 1
-          fi
-
-      - name: Deployen
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
-        run: |
-          cd markt
-          # Version aus der package.json des Markts, nicht geraten.
-          npx --yes wrangler@4 pages deploy functions --project-name=aimighty-market
-
-      - name: Was die Box jetzt sieht
-        run: |
-          echo "Der Katalog-Hash aendert sich nur bei add/remove/name/version."
-          echo "Olares synct alle fuenf Minuten. Pruefen:"
-          echo "  curl -s https://aimighty-market.pages.dev/api/v1/appstore/info"
-          echo "  olares-cli market get move -s market.AImighty"
-          echo "Die Kanonikal-Domain cachet ein bis zwei Minuten."

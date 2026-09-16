@@ -1,0 +1,101 @@
+# marktpruefen.yml — nachsehen, ob move im Katalog wirklich ankommt.
+#
+# WARUM ES DIESEN LAUF GIBT. Das Playbook aus dem Insilo-Repo sagt es
+# deutlich: nie "liegt im Markt" behaupten, ohne live gemessen zu haben --
+# Katalog UND Chart. Ein gelisteter Eintrag ohne abrufbares Chart ist nicht
+# installierbar, und genau dieser Zustand steht dort seit jeher fuer vier
+# fremde Apps.
+#
+# Zwei Gruende, warum das ein CI-Lauf ist und kein Befehl von Hand:
+#
+#   - aimighty-market.pages.dev ist aus den Entwicklungsumgebungen dieses
+#     Projekts nicht erreichbar. Vom GitHub-Runner schon.
+#   - Der Zustand hat eine Halbwertszeit. Das Pages-Projekt wird auch am Repo
+#     vorbei bespielt; Insilo lag am 19.8. um 10:40 live und war um 12:10 aus
+#     dem Katalog verschwunden, ohne dass jemand das Repo angefasst hatte.
+#     Nachmessen ist deshalb kein einmaliger Akt.
+#
+# Deployt wird hier NICHT. Marcs Repo hat einen eigenen Deploy-Workflow
+# (.github/workflows/deploy.yml, on: push: branches: [main]) mit seinen
+# Cloudflare-Secrets -- ein Merge auf main ist dort bereits der Deploy. Ein
+# zweiter Deploy aus diesem Repo waere eine Doppelung mit fremden
+# Zugangsdaten.
+
+name: marktpruefen
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Einmal taeglich. Verschwindet der Eintrag, faellt es auf, ohne dass
+    # jemand daran denken muss.
+    - cron: '17 6 * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  pruefen:
+    name: Katalog und Chart live
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version lesen
+        id: v
+        run: echo "version=$(grep -E '^version:' move/Chart.yaml | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - name: Katalog
+        run: |
+          markt=https://aimighty-market.pages.dev
+          curl -sS --max-time 30 "$markt/api/v1/appstore/info" -o katalog.json
+          python3 - <<'PY'
+          import json, sys
+          d = json.load(open("katalog.json"))
+          apps = d["data"]["apps"]
+          zeilen = sorted((a["name"], a["version"]) for a in apps.values())
+          print(f"{len(zeilen)} Apps im Katalog:")
+          for n, v in zeilen:
+              print(f"  {n:<24} {v}")
+          if not any(n == "move" for n, _ in zeilen):
+              print("\nmove steht NICHT im Katalog.")
+              sys.exit(1)
+          PY
+
+      - name: Chart
+        # Gelistet reicht nicht. Ohne abrufbares Chart ist der Eintrag nicht
+        # installierbar -- das ist der Zustand, in dem vier fremde Apps dort
+        # stecken.
+        run: |
+          markt=https://aimighty-market.pages.dev
+          v="${{ steps.v.outputs.version }}"
+          code="$(curl -sS --max-time 60 -o chart.tgz -w '%{http_code}' \
+            "$markt/api/v1/applications/move/chart?fileName=move-$v.tgz")"
+          echo "HTTP $code, $(stat -c%s chart.tgz) Byte"
+          [ "$code" = "200" ] || { echo "Chart nicht abrufbar."; exit 1; }
+
+          # Einmal entpacken muss reichen -- ein doppelt gezipptes Chart
+          # meldet die Box als "invalid tar header".
+          tar -tzf chart.tgz
+          tar -xzOf chart.tgz move/Chart.yaml | grep -E "^(name|version|appVersion):"
+          gelesen="$(tar -xzOf chart.tgz move/Chart.yaml | awk '/^version:/{print $2; exit}')"
+          [ "$gelesen" = "$v" ] || { echo "Chart traegt $gelesen, erwartet war $v."; exit 1; }
+
+          # Der envs-Block entscheidet, ob Olares den fal-Schluessel abfragt.
+          tar -xzOf chart.tgz move/OlaresManifest.yaml | grep -q '^envs:' \
+            || { echo "Im ausgelieferten Manifest fehlt der envs-Block."; exit 1; }
+          echo "envs-Block ist drin."
+
+      - name: Hash
+        # Der Katalog-Hash entsteht aus ID:name:version. Bewegt er sich nicht,
+        # synchronisiert Olares nicht -- die App waere zwar da, aber keine Box
+        # holte sie.
+        run: |
+          curl -sS --max-time 30 \
+            "https://aimighty-market.pages.dev/api/v1/appstore/hash?version=1.0.0"
+          echo
+
+      - name: Was das heisst
+        run: |
+          echo "Katalog listet move, Chart ist abrufbar und entpackt sauber."
+          echo "Olares synct alle fuenf Minuten. Auf der Box nachsehen:"
+          echo "  olares-cli market get move -s market.AImighty"
