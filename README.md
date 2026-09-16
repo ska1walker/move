@@ -112,7 +112,7 @@ GPU-Zeit und Trainingsdaten.
 | | Woher |
 |---|---|
 | erster echter fal-Aufruf | Die Generierung ist gebaut und gegen ein Doppel getestet, aber **nie gegen fal gelaufen**. Was seit 26.9.7 nicht mehr unbelegt ist: die Signatur von `fal_client.subscribe` (am Quelltext von 1.0.1, der gepinnten Version), dass der Import ohne Schlüssel durchläuft, und die Argumentnamen `image_url` und `seed` (an zwei Modellseiten). Offen bleibt das **vollständige Schema** eines Video-Modells und die Form der Antwort: `fal.ai` und `docs.fal.ai` sind vom Proxy gesperrt, nur der Suchindex und `pypi.org` kommen durch. Passt ein Argument nicht, scheitert der Job mit der vollständigen Antwort in `render_job.error`; `MOVE_FAL_BILD_ARGUMENT`, `MOVE_FAL_SEED_ARGUMENT` und `MOVE_FAL_DAUER_*` korrigieren es ohne neues Image. |
-| `running` auf der Box | **26.9.5 läuft dort**, gemeldet und bestätigt. 26.9.6 und 26.9.7 sind veröffentlicht, aber dort nicht gemessen. Auf der Box passiert nichts von selbst: nach §9.2 drückt ein Mensch „Upgrade". |
+| `running` auf der Box | **Vom Betreiber als laufend gemeldet**, zuletzt nach dem Upgrade auf 26.9.7. WELCHE Version dort läuft, ist von mir nie gemessen — dafür braucht es `kubectl` auf der Box, und die steht im lokalen Netz. Auf der Box passiert nichts von selbst: nach §9.2 drückt ein Mensch „Upgrade". |
 
 Erledigt und gemessen: Repo öffentlich (Icon HTTP 200), beide ghcr-Pakete
 anonym abrufbar, `docs/olares-learnings.md` und `docs/design-guide.md` liegen
@@ -153,10 +153,10 @@ jetzt korrigiert.
 
 | | Stand |
 |---|---|
-| Chart im Katalog | **26.9.7** ausgeliefert: HTTP 200, 11007 Byte, 7 Dateien, einmal gzippt, `type: system` drin, Render 3 Dokumente alle mit `apiVersion` und `kind` |
-| Images auf ghcr | 26.9.1 bis 26.9.7, alle anonym HTTP 200 |
-| Katalogeintrag | 26.9.7, live gemessen (PR #79, rebase gemergt), Hash `0078b20e…` |
-| `running` auf der Box | **26.9.3** — gemessen ist nur diese. 26.9.4 bis 26.9.7 sind veröffentlicht, aber dort nie gelaufen. Weg A in `docs/installieren.md` |
+| Chart im Katalog | **26.9.8** ausgeliefert: HTTP 200, 11722 Byte, 7 Dateien, einmal gzippt, `type: system` drin, Render 3 Dokumente alle mit `apiVersion` und `kind` |
+| Images auf ghcr | 26.9.1 bis 26.9.8, alle anonym HTTP 200 |
+| Katalogeintrag | 26.9.8, live gemessen (PR #80, rebase gemergt), Hash `8b08670e…` |
+| `running` auf der Box | **nicht von mir gemessen.** Der Betreiber meldet die App als laufend, zuletzt nach 26.9.7. Die Messung selbst steht aus — Weg A und der `kubectl`-Aufruf in `docs/installieren.md` |
 
 Vier Guards sind daraus entstanden, jeder dort, wo der Fehler durchkam:
 

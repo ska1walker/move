@@ -3,7 +3,7 @@
 Der letzte Schritt, und der einzige, den kein Automat übernehmen kann: die
 Box steht im lokalen Netz, die Anmeldung braucht Browser und TOTP.
 
-**Zielversion ist `26.9.7`.** Woher die Sprünge kommen, kurz:
+**Zielversion ist `26.9.8`.** Woher die Sprünge kommen, kurz:
 
 | Version | Was sie behebt |
 |---|---|
@@ -13,6 +13,7 @@ Box steht im lokalen Netz, die Anmeldung braucht Browser und TOTP.
 | 26.9.5 | Namensfeld verschluckte die Eingabe (Autofill), plus Hinweise zum Referenzbild |
 | 26.9.6 | drei Mustertemplates, damit die App beim ersten Öffnen nicht leer ist |
 | 26.9.7 | Figur mit Referenzbild ging an ein Text-zu-Video-Modell — bezahlt und wirkungslos |
+| 26.9.8 | Bild je Einstellung, Figuren vor „Job anlegen", Pfade aus der Job-Zeile begrenzt |
 
 **Der Tabelle unten folgen, nicht dieser Zeile:** welche Version im Katalog
 liegt, ändert sich schneller als dieses Dokument. `market get` fragen und
@@ -85,7 +86,7 @@ Muss dieselbe Version ein zweites Mal hoch, geht das nur über diese Quelle:
 bräuchte es dafür eine neue Version, weil der Hash aus `ID:name:version`
 entsteht.
 
-### Beide Wege: die drei Werte
+### Beide Wege: die vier Werte
 
 Olares fragt vier Werte ab, **alle optional**:
 
@@ -116,7 +117,7 @@ kubectl get pods -n move-<nutzer> \
 ```
 
 Erwartet: zwei Pods, `move` und `moveworker`, beide `true`, beide auf
-`ghcr.io/ska1walker/…:26.9.7`. Steht dort eine ältere Version, ist nicht die
+`ghcr.io/ska1walker/…:26.9.8`. Steht dort eine ältere Version, ist nicht die
 gelaufen, die hier gemeint ist — zurück zu Schritt 1, nicht weitermachen.
 
 Die Adresse ist `https://3734a903<index>.<nutzer>.<zone>` — `3734a903` ist
