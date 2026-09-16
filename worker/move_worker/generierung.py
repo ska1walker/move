@@ -117,6 +117,27 @@ def fal_key() -> str:
     return schluessel
 
 
+def fingerabdruck(schluessel: str) -> str:
+    """Erkennbar machen, WELCHER Schluessel liegt -- ohne ihn zu verraten.
+
+    Nach docs/olares-learnings.md 13: "Statt 'hinterlegt' einen
+    Fingerabdruck in der Form zeigen, die die Anbieter selbst verwenden
+    (`tvly-d...EL01`: Anfang 6, Ende 4; unter 16 Zeichen nur die Laenge).
+    Nur fuer API-Schluessel, nie fuer Passwoerter."
+
+    Der Grund ist diagnostisch: "kein Schluessel" und "falscher Schluessel"
+    sehen am anderen Ende gleich aus. Wer einen Schluessel rotiert und
+    danach 401 bekommt, will wissen, ob der neue ueberhaupt angekommen ist.
+    """
+    schluessel = schluessel.strip()
+    if not schluessel:
+        return "(leer)"
+    if len(schluessel) < 16:
+        # Zu kurz, um etwas zu zeigen, ohne zu viel zu zeigen.
+        return f"({len(schluessel)} Zeichen)"
+    return f"{schluessel[:6]}...{schluessel[-4:]}"
+
+
 def _ohne_geheimnis(text: str) -> str:
     """Raeumt den Schluessel aus einer Meldung.
 

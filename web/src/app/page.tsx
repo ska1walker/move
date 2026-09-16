@@ -8,6 +8,7 @@
  * 401 ext_authz_denied.
  */
 
+import { falBereit } from '@/lib/einstellungen';
 import { jobs, templates } from '@/lib/daten';
 
 import JobFormular from './JobFormular';
@@ -61,6 +62,7 @@ export default function Seite() {
           </p>
         ) : (
           <JobFormular
+            falBereit={falBereit()}
             vorlagen={vorlagen.map((v) => ({
               id: v.id,
               name: v.name,

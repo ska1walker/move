@@ -87,6 +87,17 @@ spec:
             # nebeneinander laden dazu ein, beim naechsten env die falsche zu
             # kopieren.
             #
+            # KORREKTUR EINER FRUEHEREN BEHAUPTUNG. Der else-Zweig steht hier
+            # als {{ "" | quote }} und nicht als nacktes "". Begruendet hatte
+            # ich das mit "das literale "" steht ausserhalb der Klammern und
+            # wird immer ausgegeben" -- das ist FALSCH. Go-Templates steuern
+            # den Text zwischen {{if}}, {{else}} und {{end}}; darauf beruht
+            # jedes Helm-Chart. Die Doppelausgabe kam aus dem
+            # Minimal-Renderer, mit dem hier ohne helm geprueft wird, und ich
+            # habe sie Helm zugeschrieben. Der Renderer kann es jetzt.
+            # Die Form bleibt, weil sie eindeutig ist -- aber nicht, weil sie
+            # noetig waere.
+            #
             # Der Schluessel selbst steht an keiner Stelle im Repo. Leer heisst
             # keine Generierung -- ein Job mit source 'fal' scheitert dann mit
             # Klartext, statt still nichts zu tun.

@@ -260,3 +260,33 @@ class TestGenerator(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestFingerabdruck(unittest.TestCase):
+    """Nach docs/olares-learnings.md 13: erkennbar, aber nicht verraetrisch."""
+
+    def test_form_wie_die_anbieter_sie_verwenden(self):
+        from move_worker.generierung import fingerabdruck
+
+        # 16 Zeichen oder mehr: Anfang 6, Ende 4.
+        self.assertEqual(fingerabdruck("abcdefghijklmnopqrst"), "abcdef...qrst")
+
+    def test_verraet_die_mitte_nicht(self):
+        from move_worker.generierung import fingerabdruck
+
+        schluessel = "fal-geheimnisvollundlang-ENDE"
+        abdruck = fingerabdruck(schluessel)
+        self.assertNotIn("geheimnisvoll", abdruck)
+        self.assertLess(len(abdruck), len(schluessel))
+
+    def test_kurz_zeigt_nur_die_laenge(self):
+        from move_worker.generierung import fingerabdruck
+
+        self.assertEqual(fingerabdruck("kurz"), "(4 Zeichen)")
+
+    def test_leer_bleibt_erkennbar_leer(self):
+        from move_worker.generierung import fingerabdruck
+
+        # "kein Schluessel" und "falscher Schluessel" muessen sich
+        # unterscheiden lassen -- das ist der ganze Zweck.
+        self.assertEqual(fingerabdruck("   "), "(leer)")

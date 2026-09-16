@@ -11,6 +11,7 @@ import { existsSync } from 'node:fs';
 import { isAbsolute, join, normalize } from 'node:path';
 
 import { datenVerzeichnis, jobEinreihen, jobs, template, type Clip } from '@/lib/daten';
+import { falBereit } from '@/lib/einstellungen';
 import { identitaet } from '@/lib/identitaet';
 
 export const runtime = 'nodejs';
@@ -79,6 +80,18 @@ export async function POST(request: Request) {
         const model = typeof c.model === 'string' ? c.model.trim() : '';
 
         if (source === 'fal') {
+          // Erst die Frage, ob es ueberhaupt gehen kann. Ohne hinterlegten
+          // Schluessel nimmt die API den Job sonst an, der Nutzer hat acht
+          // Beschreibungen geschrieben, und erst der Worker scheitert.
+          // MOVE_FAL_BEREIT ist die Ja/Nein-Auskunft aus dem Chart -- der
+          // Schluessel selbst liegt nur am Worker.
+          if (!falBereit()) {
+            throw new Error(
+              "source 'fal' braucht einen fal.ai-Schluessel. Im Olares-" +
+                'Einstellungsdialog der App unter FAL_KEY eintragen; ohne ' +
+                'Schluessel bleiben Platzhalter und eigene Uploads.',
+            );
+          }
           // Ohne Beschreibung kann nichts erzeugt werden -- und das soll hier
           // auffallen, nicht erst nachdem ein Aufruf bezahlt ist.
           if (prompt === '') {

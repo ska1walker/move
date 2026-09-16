@@ -70,7 +70,15 @@ function hochladen(datei: File, aufFortschritt: (anteil: number) => void): Promi
   });
 }
 
-export default function JobFormular({ vorlagen }: { vorlagen: Vorlage[] }) {
+export default function JobFormular({
+  vorlagen,
+  falBereit,
+}: {
+  vorlagen: Vorlage[];
+  /** Ob am Worker ein fal-Schluessel hinterlegt ist. Kommt aus dem Chart
+   *  (MOVE_FAL_BEREIT) -- der Schluessel selbst ist hier nie sichtbar. */
+  falBereit: boolean;
+}) {
   const router = useRouter();
   const dateien = useRef<HTMLInputElement>(null);
   const [vorlageId, setVorlageId] = useState(vorlagen[0]?.id ?? '');
@@ -190,7 +198,13 @@ export default function JobFormular({ vorlagen }: { vorlagen: Vorlage[] }) {
           [
             ['placeholder', 'Platzhalter', 'kostet nichts, ohne einen einzigen KI-Aufruf'],
             ['upload', 'Eigene Dateien', `genau ${vorlage?.shot_count ?? 0} MP4`],
-            ['fal', 'Von fal.ai erzeugen', 'eine Beschreibung je Einstellung'],
+            [
+              'fal',
+              'Von fal.ai erzeugen',
+              falBereit
+                ? 'eine Beschreibung je Einstellung'
+                : 'kein Schlüssel hinterlegt — bei der Installation unter FAL_KEY',
+            ],
           ] as [Quelle, string, string][]
         ).map(([wert, titel, hinweis]) => (
           <label key={wert} className="wahl-zeile">
@@ -199,6 +213,7 @@ export default function JobFormular({ vorlagen }: { vorlagen: Vorlage[] }) {
               name="quelle"
               value={wert}
               checked={quelle === wert}
+              disabled={wert === 'fal' && !falBereit}
               onChange={() => setQuelle(wert)}
             />
             <span>

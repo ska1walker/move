@@ -70,6 +70,17 @@ spec:
             # und gehoert nicht in die Anwendung.
             - name: MOVE_DATA_DIR
               value: /app/data
+            # NUR die Ja/Nein-Auskunft, NICHT der Schluessel. Das Web muss
+            # wissen, ob eine Generierung ueberhaupt moeglich ist -- es muss
+            # sie nicht selbst ausloesen koennen.
+            #
+            # Ohne das nimmt die API einen fal-Job an, der Nutzer schreibt
+            # acht Beschreibungen, und erst der Worker scheitert. Die
+            # Learnings sagen es fuer den umgekehrten Fall genauso:
+            # "ohne lesbaren Schluessel gar nicht erst anfragen -- ein leerer
+            # Bearer sieht am anderen Ende aus wie ein falscher" (13).
+            - name: MOVE_FAL_BEREIT
+              value: {{ if (.Values.olaresEnv).FAL_KEY }}"true"{{ else }}"false"{{ end }}
           volumeMounts:
             - name: appdata
               mountPath: /app/data
