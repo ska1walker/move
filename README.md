@@ -127,6 +127,23 @@ feingranulares: ein feingranulares lässt sich nur auf eigene Repos
 beschränken, der Pull Request entsteht aber gegen ein fremdes. `public_repo`
 ist der kleinste Scope, der beides kann, und er erreicht keine privaten Repos.
 
+**Wessen Token in `MARKT_TOKEN` steht, entscheidet den Weg — deshalb fragt
+der Workflow das Token, statt es anzunehmen.** Er liest
+`repos/bayerhazard~aimighty-market` und schaut auf `permissions.push`:
+
+| Token | Weg |
+|---|---|
+| eines von Marc, mit Schreibrecht auf die Quelle | Branch direkt dorthin, PR von dort |
+| ein eigenes | Branch in den Fork, PR über die Fork-Grenze |
+
+Der falsche Weg fiele sonst erst beim Push auf, nach allem Packen — und der
+Fork-Weg mit **Marcs** Token scheitert genauso, denn sein Token darf in *sein*
+Repo schreiben, nicht in Kais Fork. Der Schritt sagt im Log, welchen Weg er
+genommen hat.
+
+Zu bedenken: Marcs Token heißt, Branch und Pull Request erscheinen unter
+seinem Namen.
+
 ### Zwei Fallen, die dort Zeit gekostet haben
 
 **Der Markt hat zwei Quellen.** Das Cloudflare-Pages-Projekt wird auch direkt

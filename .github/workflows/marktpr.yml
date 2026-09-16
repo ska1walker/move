@@ -30,12 +30,21 @@
 #     Name:  MARKT_TOKEN
 #     Wert:  ein KLASSISCHES PAT mit genau einem Scope: public_repo.
 #
+#   BEIDES GEHT, der Workflow fragt das Token selbst:
+#     - Ein Token von Marc, das in bayerhazard/aimighty-market schreiben
+#       darf -> Branch direkt dorthin.
+#     - Ein eigenes Token -> Branch in den Fork ska1walker/aimighty-market,
+#       Pull Request ueber die Fork-Grenze.
+#   Verwechseln kann man es nicht: der Schritt "Weg bestimmen" fragt
+#   `repos/<quelle>.permissions.push` und sagt im Log, welchen Weg er nimmt.
+#
 #   Warum klassisch und nicht feingranular: ein feingranulares Token laesst
-#   sich nur auf EIGENE Repos beschraenken. Gepusht wird in den eigenen Fork
-#   (ska1walker/aimighty-market) -- das ginge feingranular -- aber der Pull
-#   Request entsteht gegen bayerhazard/aimighty-market, ein fremdes Repo.
-#   `public_repo` ist dafuer der kleinste Scope und kann keine privaten Repos
-#   anfassen. Beide beteiligten Repos sind oeffentlich.
+#   sich nur auf EIGENE Repos beschraenken -- der Pull Request entsteht aber
+#   gegen ein fremdes. `public_repo` ist der kleinste Scope, der beides kann,
+#   und er erreicht keine privaten Repos. Beide Repos sind oeffentlich.
+#
+#   Wessen Token drinsteht, entscheidet auch, wer als Autor erscheint. Marcs
+#   Token heisst: Branch und Pull Request kommen unter seinem Namen.
 
 name: marktpr
 
@@ -77,27 +86,61 @@ jobs:
       - name: Chart packen
         run: ./scripts/paket.sh
 
-      - name: Fork holen und vom aktuellen Stand der Quelle abzweigen
-        # Kai hat auf bayerhazard/aimighty-market nur LESERECHTE. Der Weg ist
-        # Fork, Branch, Pull Request -- so steht es in beacons BETRIEB.md, und
-        # insilos Einreichung dort ist PR #1.
+      - name: Weg bestimmen und Branch anlegen
+        # ZWEI WEGE, und welcher gilt, haengt am Token -- nicht an einer
+        # Vereinbarung. Deshalb wird es GEFRAGT statt angenommen:
         #
-        # Abgezweigt wird von upstream/main, NICHT vom Fork-Stand: der Fork
-        # lag gemessen 62 Commits hinter der Quelle. Ein Eintrag auf einem
+        #   Token mit Schreibrecht auf die Quelle (z. B. eines von Marc)
+        #     -> Branch direkt in bayerhazard/aimighty-market, PR von dort.
+        #   Token ohne dieses Recht (Kais eigenes)
+        #     -> Branch in den Fork ska1walker/aimighty-market, PR ueber die
+        #        Fork-Grenze. So beschreibt es beacons docs/BETRIEB.md:
+        #        "Kai hat dort nur Leserechte -- der Weg ist Fork, Branch,
+        #        Pull Request an Marc."
+        #
+        # Der falsche Weg faellt sonst erst beim Push auf, nach allem Packen.
+        # Und der Fork-Weg mit MARCS Token scheitert genauso: sein Token darf
+        # in SEIN Repo schreiben, nicht in Kais Fork.
+        #
+        # Abgezweigt wird immer von upstream/main, nie vom Fork-Stand: der
+        # Fork lag gemessen 62 Commits hinter der Quelle. Ein Eintrag auf dem
         # alten Stand waere ein PR, der 62 fremde Aenderungen zurueckdreht.
+        id: weg
         env:
           GH_TOKEN: ${{ secrets.MARKT_TOKEN || github.token }}
         run: |
           version="$(grep -E '^version:' move/Chart.yaml | awk '{print $2}')"
+          QUELLE=bayerhazard/aimighty-market
+          FORK=ska1walker/aimighty-market
 
-          git clone https://github.com/ska1walker/aimighty-market dist/markt
+          darf="$(gh api "repos/$QUELLE" --jq '.permissions.push // false' 2>/dev/null || echo false)"
+          if [ "$darf" = "true" ]; then
+            ziel="$QUELLE"
+            kopf="move-$version"
+            echo "Das Token darf in $QUELLE schreiben -- direkter Weg."
+          else
+            ziel="$FORK"
+            kopf="ska1walker:move-$version"
+            echo "Kein Schreibrecht auf $QUELLE -- Weg ueber den Fork $FORK."
+          fi
+          echo "ziel=$ziel" >> "$GITHUB_OUTPUT"
+          echo "kopf=$kopf" >> "$GITHUB_OUTPUT"
+          echo "branch=move-$version" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+          git clone "https://github.com/$ziel" dist/markt
           cd dist/markt
-          git remote add upstream https://github.com/bayerhazard/aimighty-market
-          git fetch --depth 50 upstream main
-          echo "Fork:   $(git rev-parse --short HEAD)"
-          echo "Quelle: $(git rev-parse --short upstream/main)"
-          git checkout -q -B "move-$version" upstream/main
-          echo "Branch move-$version zweigt von $(git rev-parse --short upstream/main) ab."
+          if [ "$ziel" != "$QUELLE" ]; then
+            git remote add upstream "https://github.com/$QUELLE"
+            git fetch --depth 50 upstream main
+            basis=upstream/main
+            echo "Fork: $(git rev-parse --short HEAD)"
+          else
+            basis=origin/main
+          fi
+          echo "Quelle: $(git rev-parse --short $basis)"
+          git checkout -q -B "move-$version" "$basis"
+          echo "Branch move-$version zweigt von $(git rev-parse --short $basis) ab."
 
           npm install --no-save --no-audit --no-fund \
             typescript@5.7.3 @cloudflare/workers-types@4.20250430.0
@@ -134,18 +177,20 @@ jobs:
             exit 1
           fi
 
-          version="$(grep -E '^version:' move/Chart.yaml | awk '{print $2}')"
-          branch="move-$version"
+          version="${{ steps.weg.outputs.version }}"
+          branch="${{ steps.weg.outputs.branch }}"
+          kopf="${{ steps.weg.outputs.kopf }}"
 
           gh auth setup-git
-          # Gepusht wird in den FORK (origin), nicht in Marcs Repo.
+          # origin ist das, was der vorige Schritt bestimmt hat: die Quelle
+          # oder der Fork.
+          echo "Push nach ${{ steps.weg.outputs.ziel }}, PR-Kopf $kopf"
           git -C dist/markt push -u origin "$branch"
 
           # Schon offen? Dann hat der Push gereicht, ein zweiter PR waere
-          # Rauschen. Bei einem PR aus einem Fork ist der Kopf
-          # <eigner>:<branch>.
+          # Rauschen. Beim Fork-Weg ist der Kopf <eigner>:<branch>.
           offen="$(gh pr list --repo bayerhazard/aimighty-market \
-                     --head "ska1walker:$branch" --state open --json number --jq 'length')"
+                     --head "$kopf" --state open --json number --jq 'length')"
           if [ "$offen" != "0" ]; then
             echo "Es gibt bereits einen offenen PR fuer $branch. Der Push hat ihn aktualisiert."
             exit 0
@@ -209,7 +254,7 @@ jobs:
 
           gh pr create --repo bayerhazard/aimighty-market \
             --base main \
-            --head "ska1walker:$branch" \
+            --head "$kopf" \
             --title "move $version in den Katalog" \
             --body-file /tmp/pr.md
 
