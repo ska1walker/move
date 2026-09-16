@@ -3,68 +3,38 @@
 Der letzte Schritt, und der einzige, den kein Automat übernehmen kann: die
 Box steht im lokalen Netz, die Anmeldung braucht Browser und TOTP.
 
-**Zielversion ist `26.9.2`, und nicht das gelistete `26.9.1`.** Das
-ausgelieferte 26.9.1 rendert den Worker ohne `apiVersion` (gemessen, Begründung
-im README) — es zu installieren wäre ein Fehlschlag mit einer irreführenden
-Meldung. Reihenfolge deshalb:
+**Zielversion ist `26.9.2`.** Alles davor ist erledigt und live gemessen:
 
-1. Images `26.9.2` bauen und nach ghcr pushen (ein `v26.9.2`-Tag oder
-   `ci.yml` per Klick mit gesetztem Haken `push_images`)
-2. Anonym prüfen, dass beide Tags da sind — `marktpruefen.yml` tut genau das,
-   und `marktpr.yml` bricht sonst von selbst ab
-3. Installieren und `running` messen (dieses Dokument)
-4. **Erst danach** der Katalogeintrag auf 26.9.2
+| | |
+|---|---|
+| Images auf ghcr | `move:26.9.2` und `moveworker:26.9.2`, anonym HTTP 200 |
+| Katalog | listet `move 26.9.2` unter 22 Apps |
+| Chart | HTTP 200, 8085 Byte, entpackt in einem Schritt, `envs`-Block drin |
+| Hash | `abbe5337…` (vorher `666445a6…`), also synchronisieren die Boxen |
 
-Stand davor, gemessen: Repo öffentlich, Icon HTTP 200, beide ghcr-Pakete
-anonym abrufbar (für 26.9.1; 26.9.2 ist noch nicht gebaut).
+Damit ist dieses Dokument der einzige noch offene Schritt.
 
-## 1. Nicht aus dem Katalog — über die Quelle `upload`
+## 1. Ist move angekommen
 
-Hier stand „Katalog abwarten, dann `-s market.AImighty` installieren". Das ist
-für 26.9.2 **falsch**, aus zwei Gründen, die in dieselbe Richtung zeigen:
-
-- Im Katalog steht 26.9.1, und dieses Chart rendert den Worker ohne
-  `apiVersion` (s. o.). Installieren würde scheitern.
-- CLAUDE.md lässt die Reihenfolge nicht offen: *„Images bauen -> auf der
-  eigenen Box installieren und `running` messen -> erst dann in den Katalog."*
-  Der Katalog kommt also **nach** dieser Messung, nicht davor.
-
-`docs/olares-learnings.md` 9.1 nennt für genau diesen Fall den Upload-Weg:
-Sichtbarkeit eine Box, *„Entwicklung; registriert die Version, ersetzt kein
-Deployment"*. Für eine Erstinstallation ist das Letzte kein Problem — es gibt
-noch kein Deployment.
-
-Das Chart dafür ist das Artefakt `chart-26.9.2` aus dem CI-Lauf (enthält
-`move-26.9.2.tgz` und das base64). Herunterladen, auf die Box bringen:
+Der Katalog steht auf 26.9.2, der Hash hat sich bewegt — die Boxen
+synchronisieren also. Olares pollt alle fünf Minuten.
 
 ```bash
-scp move-26.9.2.tgz olares@<box>:/tmp/
+olares-cli market get move -s market.AImighty
 ```
 
-**Nicht selbst neu packen und nicht das base64 von irgendwo wiederverwenden.**
-`helm package` ist nicht byte-reproduzierbar (die mtimes kommen aus dem
-Checkout), also müssen Tarball und base64 aus **einem** Lauf stammen.
+Zeigt das nichts, ist der Sync noch nicht durch — abwarten, nicht nachhelfen.
+Zeigt es **26.9.1**, ist es der alte Stand: dieses Chart rendert den Worker
+ohne `apiVersion` und lässt sich nicht installieren. Dann nicht installieren,
+sondern weiter warten oder die Market Source einmal entfernen und neu
+hinzufügen (nach `docs/olares-learnings.md` 9.3 der einzige dauerhafte Fix,
+wenn `raw_data` klemmt; der Sync-Knopf leert den Cache nicht).
 
 ## 2. Installieren
 
-Die Quelle heißt `upload`, nicht `market.AImighty`. Den genauen Flag-Satz von
-`market upload` habe ich **nicht** belegt — das Dokument nennt den Befehl, aber
-keine Flags. Deshalb erst fragen, dann tippen:
-
 ```bash
-olares-cli market upload --help
-olares-cli market upload /tmp/move-26.9.2.tgz     # Form aus --help uebernehmen
-olares-cli market install move -s upload --watch
+olares-cli market install move -s market.AImighty --watch
 ```
-
-Alternative ohne CLI, gleichwertig: in der Olares-Oberfläche
-**Market -> Upload custom app package**. Die Quellen stehen dort unter
-**Market -> Settings -> Market source** und nicht in `market --help`.
-
-Muss ein zweites Mal dieselbe Version hoch, geht das nur über diese Quelle:
-`market upgrade -s upload` erlaubt dieselbe Nummer und überschreibt. Im
-Katalog wäre dafür eine neue Version nötig, weil der Hash aus
-`ID:name:version` entsteht.
 
 Olares fragt dabei drei Werte ab, **alle optional**:
 
@@ -88,9 +58,8 @@ kubectl get pods -n move-<nutzer> \
 ```
 
 Erwartet: zwei Pods, `move` und `moveworker`, beide `true`, beide auf
-`ghcr.io/ska1walker/…:26.9.2`. Steht dort `26.9.1`, ist nicht die Version
-gelaufen, die hier gemeint ist — dann hat die Box aus dem Katalog geholt, nicht
-aus dem neuen Paket.
+`ghcr.io/ska1walker/…:26.9.2`. Steht dort `26.9.1`, hat die Box noch den alten
+Katalogstand synchronisiert — zurück zu Schritt 1, nicht weitermachen.
 
 Die Adresse ist `https://3734a903<index>.<nutzer>.<zone>` — `3734a903` ist
 `md5("move")[:8]`. Nicht selbst ausrechnen, sondern nachsehen:

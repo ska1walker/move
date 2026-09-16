@@ -63,12 +63,20 @@ Erledigt und gemessen: Repo öffentlich (Icon HTTP 200), beide ghcr-Pakete
 anonym abrufbar, `docs/olares-learnings.md` und `docs/design-guide.md` liegen
 vor.
 
-### Der Katalog steht auf 26.9.1, und dieses 26.9.1 ist kaputt
+### Der Katalog steht auf 26.9.2 — und warum es 26.9.2 gab
 
-Das Chart, das gerade in Marcs Katalog liegt, **lässt sich nicht
-installieren**. Nachgemessen, nicht vermutet: `git archive 9268b3b` (der
-Stand, aus dem das ausgelieferte Paket entstand) mit echtem helm gerendert
-ergibt drei Dokumente, und das dritte ist
+**Erledigt:** Images `26.9.2` auf ghcr (anonym HTTP 200), Katalogeintrag live
+(PR #72 gemergt), Chart abrufbar (HTTP 200, 8085 Byte, entpackt in einem
+Schritt, `envs`-Block drin), Hash bewegt auf `abbe5337…` von `666445a6…`.
+Ohne Hash-Änderung synchronisiert keine Box.
+
+**Offen:** `running` auf der Box. Der Katalog läuft der Messung hier voraus,
+und das widerspricht der Reihenfolge in CLAUDE.md. Grund war der Vorgänger:
+
+Das Chart, das vorher im Katalog lag, **ließ sich nicht installieren**.
+Nachgemessen, nicht vermutet: `git archive 9268b3b` (der Stand, aus dem das
+ausgelieferte 26.9.1 entstand) mit echtem helm gerendert ergibt drei
+Dokumente, und das dritte ist
 
 ```
 apiVersion=None    kind=Deployment    name=moveworker
@@ -83,14 +91,26 @@ lint` nicht, der Katalog nicht. Die API hätte es abgelehnt.
 
 | | Stand |
 |---|---|
-| Chart 26.9.2 | gepackt, `helm template` rendert 3 Dokumente, `apiVersion` 3 == `kind` 3 |
-| Images `26.9.2` auf ghcr | **fehlen** — der Push läuft nur auf einem `v*`-Tag oder per Klick |
-| Katalogeintrag | steht auf 26.9.1, also auf dem kaputten Chart |
+| Chart 26.9.2 | gepackt; `helm template` rendert 3 Dokumente, `apiVersion` 3 == `kind` 3 |
+| Images `26.9.2` auf ghcr | da, anonym HTTP 200, `move` = `sha256:03b3cd4b…` |
+| Katalogeintrag | 26.9.2, live gemessen |
+| `running` auf der Box | **nicht gemessen** |
 
-In dieser Reihenfolge, und nicht anders: Images bauen, auf der Box
-installieren und `running` **messen**, erst dann der Katalogeintrag.
-`marktpr.yml` prüft seit dem Image-Schritt selbst, dass die Tags existieren,
-und bricht sonst ab, bevor etwas gelistet wird.
+Die letzte Zeile ist die Abweichung, und sie bleibt eine. CLAUDE.md sagt:
+Images bauen → installieren und `running` **messen** → erst dann der Katalog.
+Hier lief der Katalog vor, weil der gelistete Vorgänger nicht installierbar
+war; 26.9.2 ist in jedem Zustand besser als das. Die Messung ist damit
+nachzuholen, nicht erledigt — Ablauf in `docs/installieren.md`.
+
+Zwei Guards sind daraus entstanden, beide dort, wo der Fehler durchkam:
+
+- `marktpr.yml` prüft **vor** dem Push, dass die Image-Tags existieren und
+  anonym ziehbar sind, und bricht sonst ab, bevor etwas gelistet wird.
+- `marktpruefen.yml` **rendert das ausgelieferte Chart** und zählt
+  `apiVersion` und `kind` je Dokument. Entpacken und `grep` allein haben
+  26.9.1 durchgelassen: gültiges YAML, richtige Version, `envs`-Block
+  vorhanden — und trotzdem nicht installierbar. Geprüft wird jetzt, was der
+  Katalog herausgibt, nicht was im Repo steht.
 
 ## Wie eine App auf die Box kommt — drei Wege
 

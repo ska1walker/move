@@ -40,6 +40,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.3
+
       - name: Version lesen
         id: v
         run: echo "version=$(grep -E '^version:' move/Chart.yaml | awk '{print $2}')" >> "$GITHUB_OUTPUT"
@@ -84,6 +88,43 @@ jobs:
           tar -xzOf chart.tgz move/OlaresManifest.yaml | grep -q '^envs:' \
             || { echo "Im ausgelieferten Manifest fehlt der envs-Block."; exit 1; }
           echo "envs-Block ist drin."
+
+      - name: Das AUSGELIEFERTE Chart rendern
+        # DIE LUECKE, DIE 26.9.1 DURCHGELASSEN HAT. Bis hierher wurde das
+        # Chart nur entpackt und durchsucht -- entpacken und grep sehen aber
+        # nicht, was beim Rendern herauskommt. Das ausgelieferte 26.9.1 war
+        # gueltiges YAML, entpackte sauber, trug die richtige Version und den
+        # envs-Block: alle Pruefungen oben gruen. Und es rendert den Worker
+        # ohne apiVersion, weil eine Trimm-Marke den Zeilenumbruch frass.
+        # Installierbar war es nicht.
+        #
+        # check-chart.sh prueft dasselbe -- aber am Repo. Hier zaehlt, was der
+        # Katalog wirklich herausgibt: das Pages-Projekt wird auch am Repo
+        # vorbei bespielt, und ein base64 in einer Tabelle kann von einem
+        # anderen Stand stammen als der Commit, der gerade ausgecheckt ist.
+        #
+        # Die Stub-Werte kommen aus dem Repo, denn sie liegen absichtlich
+        # NICHT im Paket (paket.sh prueft das sogar).
+        run: |
+          rm -rf entpackt && mkdir entpackt
+          tar -xzf chart.tgz -C entpackt
+          helm template move entpackt/move/ -f move/values-olares-stub.yaml > gerendert.yaml
+          python3 - <<'PY'
+          import sys, yaml
+          docs = [d for d in yaml.safe_load_all(open("gerendert.yaml")) if d]
+          print(f"{len(docs)} Dokumente aus dem ausgelieferten Chart:")
+          fehlt = []
+          for d in docs:
+              av, k = d.get("apiVersion"), d.get("kind")
+              name = (d.get("metadata") or {}).get("name")
+              print(f"  apiVersion={av!s:<12} kind={k!s:<12} name={name}")
+              if not av or not k:
+                  fehlt.append(name or "?")
+          if fehlt:
+              print("\nOhne apiVersion oder kind: " + ", ".join(fehlt))
+              print("Dieses Chart ist NICHT installierbar. Version heben und neu ausliefern.")
+              sys.exit(1)
+          PY
 
       - name: Images
         # Nach docs/olares-learnings.md 7: "Vor jeder Listung pruefen, dass
