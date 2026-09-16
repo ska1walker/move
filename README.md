@@ -9,6 +9,9 @@ Die Pipeline läuft von einem handgeschriebenen `CutTemplate` bis zum fertigen
 MP4, ohne einen einzigen KI-Aufruf. Beide Images bauen in CI. Auf der Box war
 noch nichts installiert — `running` ist nicht gemessen.
 
+Das Repo ist öffentlich, damit die `icon.png`-URL im Manifest auflöst
+(gemessen: HTTP 200, 512×512 PNG). Die ghcr-Pakete sind es noch nicht.
+
 ## Was drin ist
 
 ```
@@ -50,8 +53,7 @@ Image-Tags aus `.Chart.AppVersion`, kein GPU-Bedarf in v0.
 |---|---|
 | `docs/olares-learnings.md` | das gemessene Olares-Dokument (Stand 15.09.2026). **Wichtigste fehlende Datei** — CLAUDE.md verweist bei jedem Widerspruch darauf. |
 | `docs/design-guide.md` | Kopie aus dem AImighty-Markt-Repo. Ohne sie kann Claude Code die verbindliche Designvorgabe nicht lesen. |
-| Repo auf Public stellen | Entschieden, aber noch nicht getan. Danach liefert die `icon.png`-URL im Manifest HTTP 200. |
-| ghcr-Pakete auf Public stellen | Einmalig nach dem ersten Push. Pakete sind auch in einem öffentlichen Repo zunächst privat. |
+| ghcr-Pakete auf Public stellen | Einmalig nach dem ersten Push. Pakete sind auch in einem öffentlichen Repo zunächst privat — **gemessen: beide liefern anonym HTTP 403**, und die Installation endet damit in `registry_error`. |
 | `docs/design-guide.md` | s. o. — die Oberfläche folgt bisher der Zusammenfassung im Platzhalter, nicht dem Original. |
 | erster echter fal-Aufruf | Die Generierung ist gebaut und getestet, aber nur gegen ein Doppel. fal.ai ist vom Proxy gesperrt. |
 | Eintrag in einer Market Source | Der eigentliche Grund, warum move nirgends im Marktplatz auftaucht. S. u. |
