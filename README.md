@@ -67,37 +67,63 @@ im Insilo-Repo, dort auf einer echten Box gemessen:
 | **eigene Market Source** | jede Box, die die Quelle einträgt | **ja — der Weg für move** |
 | Upload custom chart (Market UI, `market upload`) | nur diese Box | **nein** |
 
-**Der lokale Upload ist kein Auslieferungsweg und auch kein Testweg.** Olares
-hat ihn als Dev-Feature gedacht; er löst den vollen BFL-Ablauf nicht aus. Es
-entsteht **kein `Application`-CR, kein `ns-owner`-Label, keine NetworkPolicy**
-— dann findet `check-auth` Authelia nicht und der Pod endet in `Init:Error`.
-Er registriert eine Version, er installiert nicht.
+**Der lokale Upload ist als Auslieferungsweg ausgeschlossen** — er registriert
+eine Version auf genau einer Box.
 
-Das hat eine Folge, die die Reihenfolge in CLAUDE.md präzisiert statt ihr zu
-widersprechen: *„erst installieren und `running` messen, dann in den Katalog"*
-— der Markteintrag **ist** hier der Installationsweg. Kein Widerspruch, denn
-die eigene Market Source ist keine Veröffentlichung an die Welt: nur Boxen,
-die diese Quelle eingetragen haben, sehen move. Der Eintrag kommt also zuerst,
-dann die Installation, dann die Messung. Was CLAUDE.md verbietet, ist der
-Schritt in einen **öffentlichen** Katalog vor der Messung.
+**Ob er als Installationsweg für die erste Messung trägt, ist offen.** Zwei
+Dokumente von derselben Box widersprechen sich, und das ist auf der Box zu
+entscheiden, nicht am Schreibtisch:
 
-## Warum es bei insilo geht
+| Quelle | Aussage |
+|---|---|
+| `insilo/docs/OLARES_DEEP_DIVE.md §4` | *Market UI → Upload .tgz* erzeugt einen `ApplicationManager`-CR, aber **kein** `Application`-CR, kein `ns-owner`-Label, keine NetworkPolicy → `check-auth` findet Authelia nicht → `Init:Error`. „Für Production-Apps unbenutzbar." |
+| `beacon/docs/BETRIEB.md §4` | genau dieser Weg als Vorstufe: `olares-cli market upload dist/beacon-0.1.1.tgz` und danach `olares-cli market install beacon`, unter der Überschrift *„Auf der eigenen Box installieren, bevor irgendetwas in einen Markt geht"*. |
 
-Weil insilo denselben Weg nimmt, nicht einen anderen: `insilo-0.1.98.tgz`
-steht in Marcs `_lib.ts`, der Eintrag in `_apps.ts` Zeile 854. Drei
-Unterschiede, alle nachprüfbar:
+Vermutlich liegt es an den **zwei Schritten**: insilo beschreibt den Upload
+über die UI als Einzelschritt, beacon lädt hoch **und ruft danach
+`market install`** — also den normalen Installationsablauf, der den
+`Application`-CR anlegt. Das ist eine Vermutung, keine Messung.
 
-1. **Das insilo-Repo ist öffentlich.** Sein Icon zeigt auf
+Für move heißt das: erst `market upload` + `market install` versuchen. Trägt
+es, ist `running` messbar, bevor irgendetwas in einen Katalog geht — genau die
+Reihenfolge, die CLAUDE.md verlangt. Trägt es nicht, ist der Markteintrag
+selbst der Installationsweg, und das ist kein Verstoß gegen die Regel: die
+eigene Market Source ist keine Veröffentlichung an die Welt, nur Boxen mit
+dieser Quelle sehen move. Verboten ist der Schritt in einen **öffentlichen**
+Katalog vor der Messung.
+
+## Warum es bei insilo und beacon geht
+
+Beide nehmen denselben Weg wie move, nicht einen anderen:
+`insilo-0.1.98.tgz` steht in Marcs `_lib.ts`, beacon ist dort als `0.1.4`
+eingetragen. Was sie anders machen:
+
+1. **Beide Repos sind öffentlich.** insilos Icon zeigt auf
    `raw.githubusercontent.com/ska1walker/insilo/main/icon.png` — dieselbe Form
    wie bei move, und sie löst auf. Bei move noch nicht.
-2. **Der Markt-Schritt war immer von Hand**, auf Kais Rechner. `release.sh`
-   packt das Chart dort (Helm ist vorhanden) und legt es nach `~/Downloads`;
-   die Einträge in `_apps.ts` und `_lib.ts` setzt jemand mit Schreibrecht.
-3. **Insilos eigene CI pusht nie in Marcs Repo.** `release.yml` baut
-   ausschließlich die vier Images nach ghcr.
+2. **Der Weg ist Fork, Branch, Pull Request.** Wörtlich aus
+   `beacon/docs/BETRIEB.md`: *„Kai hat dort nur Leserechte — der Weg ist Fork,
+   Branch, Pull Request an Marc."* Insilos Einreichung ist PR #1 dort.
+3. **Keine der beiden CIs pusht in Marcs Repo.** Beide `release.yml` bauen
+   Images; beacon packt zusätzlich das Chart als Artefakt. Den Markt-Schritt
+   macht ein Mensch.
 
-Es gab also keine Automatisierung, die man für move hätte übernehmen können.
-`marktpr.yml` automatisiert einen Schritt, der auch für insilo Handarbeit war.
+Es gab also keine Automatisierung zum Übernehmen. `marktpr.yml` automatisiert
+einen Schritt, der bei beiden Handarbeit war.
+
+**Zwei Dinge daran hätten meinen Workflow scheitern lassen:**
+
+- Er pushte den Branch **direkt** in Marcs Repo. Bei Leserechten endet das in
+  einem 403. Jetzt geht der Push in den Fork `ska1walker/aimighty-market` und
+  der Pull Request wird über Fork-Grenze gestellt (`--head ska1walker:<branch>`).
+- Der Fork lag gemessen **62 Commits hinter** der Quelle. Ein Eintrag auf
+  diesem Stand wäre ein PR, der 62 fremde Änderungen zurückdreht. Der Branch
+  zweigt deshalb von `upstream/main` ab, nicht vom Fork-Stand.
+
+Und das Token muss ein **klassisches PAT mit `public_repo`** sein, kein
+feingranulares: ein feingranulares lässt sich nur auf eigene Repos
+beschränken, der Pull Request entsteht aber gegen ein fremdes. `public_repo`
+ist der kleinste Scope, der beides kann, und er erreicht keine privaten Repos.
 
 ### Zwei Fallen, die dort Zeit gekostet haben
 

@@ -28,10 +28,14 @@
 # EINRICHTUNG, einmalig:
 #   Settings -> Secrets and variables -> Actions -> New repository secret
 #     Name:  MARKT_TOKEN
-#     Wert:  ein FEINGRANULARES Token, nur fuer bayerhazard/aimighty-market,
-#            mit Contents: Read and write und Pull requests: Read and write.
-#            Kein klassisches PAT mit Zugriff auf alles.
-#   Der Besitzer des Markt-Repos muss den Zugriff gewaehrt haben.
+#     Wert:  ein KLASSISCHES PAT mit genau einem Scope: public_repo.
+#
+#   Warum klassisch und nicht feingranular: ein feingranulares Token laesst
+#   sich nur auf EIGENE Repos beschraenken. Gepusht wird in den eigenen Fork
+#   (ska1walker/aimighty-market) -- das ginge feingranular -- aber der Pull
+#   Request entsteht gegen bayerhazard/aimighty-market, ein fremdes Repo.
+#   `public_repo` ist dafuer der kleinste Scope und kann keine privaten Repos
+#   anfassen. Beide beteiligten Repos sind oeffentlich.
 
 name: marktpr
 
@@ -73,14 +77,28 @@ jobs:
       - name: Chart packen
         run: ./scripts/paket.sh
 
-      - name: Market Source holen
+      - name: Fork holen und vom aktuellen Stand der Quelle abzweigen
+        # Kai hat auf bayerhazard/aimighty-market nur LESERECHTE. Der Weg ist
+        # Fork, Branch, Pull Request -- so steht es in beacons BETRIEB.md, und
+        # insilos Einreichung dort ist PR #1.
+        #
+        # Abgezweigt wird von upstream/main, NICHT vom Fork-Stand: der Fork
+        # lag gemessen 62 Commits hinter der Quelle. Ein Eintrag auf einem
+        # alten Stand waere ein PR, der 62 fremde Aenderungen zurueckdreht.
         env:
-          # gh auth setup-git richtet den Credential-Helper ein. Damit steht
-          # das Token NICHT in einer Remote-URL und landet nicht im Log.
           GH_TOKEN: ${{ secrets.MARKT_TOKEN || github.token }}
         run: |
-          git clone --depth 1 https://github.com/bayerhazard/aimighty-market dist/markt
+          version="$(grep -E '^version:' move/Chart.yaml | awk '{print $2}')"
+
+          git clone https://github.com/ska1walker/aimighty-market dist/markt
           cd dist/markt
+          git remote add upstream https://github.com/bayerhazard/aimighty-market
+          git fetch --depth 50 upstream main
+          echo "Fork:   $(git rev-parse --short HEAD)"
+          echo "Quelle: $(git rev-parse --short upstream/main)"
+          git checkout -q -B "move-$version" upstream/main
+          echo "Branch move-$version zweigt von $(git rev-parse --short upstream/main) ab."
+
           npm install --no-save --no-audit --no-fund \
             typescript@5.7.3 @cloudflare/workers-types@4.20250430.0
 
@@ -120,12 +138,14 @@ jobs:
           branch="move-$version"
 
           gh auth setup-git
+          # Gepusht wird in den FORK (origin), nicht in Marcs Repo.
           git -C dist/markt push -u origin "$branch"
 
           # Schon offen? Dann hat der Push gereicht, ein zweiter PR waere
-          # Rauschen.
+          # Rauschen. Bei einem PR aus einem Fork ist der Kopf
+          # <eigner>:<branch>.
           offen="$(gh pr list --repo bayerhazard/aimighty-market \
-                     --head "$branch" --state open --json number --jq 'length')"
+                     --head "ska1walker:$branch" --state open --json number --jq 'length')"
           if [ "$offen" != "0" ]; then
             echo "Es gibt bereits einen offenen PR fuer $branch. Der Push hat ihn aktualisiert."
             exit 0
@@ -188,7 +208,8 @@ jobs:
           TEXT
 
           gh pr create --repo bayerhazard/aimighty-market \
-            --head "$branch" \
+            --base main \
+            --head "ska1walker:$branch" \
             --title "move $version in den Katalog" \
             --body-file /tmp/pr.md
 

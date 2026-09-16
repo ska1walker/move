@@ -30,7 +30,12 @@ cd "$ROOT"
 
 APP="move"
 DIST="dist"
+# Marcs Repo ist die Quelle der Wahrheit. Geschrieben wird aber in den FORK:
+# Kai hat auf bayerhazard/aimighty-market nur Leserechte, der Weg ist Fork,
+# Branch, Pull Request (so steht es in beacons docs/BETRIEB.md, und insilos
+# Einreichung dort ist PR #1).
 HERKUNFT="https://github.com/bayerhazard/aimighty-market"
+FORK="https://github.com/ska1walker/aimighty-market"
 
 red()    { printf "\033[31m%s\033[0m\n" "$*"; }
 green()  { printf "\033[32m%s\033[0m\n" "$*"; }
@@ -53,10 +58,11 @@ else
   echo "-- vorhandene Kopie benutzen: $MARKT --"
 fi
 
-# Nie in ein fremdes Repo schreiben, das man fuer ein anderes haelt.
+# Nie in ein fremdes Repo schreiben, das man fuer ein anderes haelt. Erlaubt
+# sind beide: die Quelle (zum Lesen) und der Fork (dorthin wird gepusht).
 URL="$(git -C "$MARKT" remote get-url origin)"
-if [[ "${URL%.git}" != "$HERKUNFT" ]]; then
-  red "$MARKT zeigt auf $URL, erwartet war $HERKUNFT"
+if [[ "${URL%.git}" != "$HERKUNFT" && "${URL%.git}" != "$FORK" ]]; then
+  red "$MARKT zeigt auf $URL, erwartet war $HERKUNFT oder $FORK"
   exit 1
 fi
 green "  + $(git -C "$MARKT" rev-parse --short HEAD) auf $URL"
@@ -202,11 +208,18 @@ cat <<TEXT
 Die Kopie unter $MARKT traegt den Eintrag auf dem Branch $BRANCH.
 Dieses Skript hat NICHT gepusht.
 
-Wer Schreibrechte auf $HERKUNFT hat:
+Der Weg ist Fork, Branch, Pull Request -- auf $HERKUNFT
+gibt es nur Leserechte. Gepusht wird also in den Fork, und der Pull Request
+geht ueber die Fork-Grenze:
 
-  git -C $MARKT push -u origin $BRANCH
-  gh pr create --repo bayerhazard/aimighty-market --head $BRANCH \\
+  git -C $MARKT push -u origin $BRANCH        # origin = der Fork
+  gh pr create --repo bayerhazard/aimighty-market \\
+    --base main --head ska1walker:$BRANCH \\
     --title "$APP $VERSION in den Katalog"
+
+Zeigt origin hier auf $HERKUNFT, vorher umstellen:
+
+  git -C $MARKT remote set-url origin $FORK
 
 Oder ohne diese Kopie, direkt im eigenen Checkout:
 
