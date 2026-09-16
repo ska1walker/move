@@ -298,7 +298,7 @@ genau einem.
 
 ## Frontend-Design
 
-Verbindlich: `docs/design-guide.md` (AImighty-Standard). Hanseatenblau
+Verbindlich: `docs/design-guide.md` (AImighty-Standard, jetzt im Repo). Hanseatenblau
 `#051729` + Gold `#caa960`, keine dritte Farbfamilie. Geist Sans und Geist Mono
 selbst gehostet. Kein Verlauf, kein Schatten. Keine festen Pixelwerte,
 `--am-*`-Maße auf Grundeinheit 4 px. Genau eine primäre Handlung je Ansicht.

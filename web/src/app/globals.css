@@ -26,28 +26,75 @@
 }
 
 :root {
+  /* Hanseatenblau, Farbton 249,9. Werte aus dem gelieferten Paket, siehe
+     docs/design-guide.md -- NICHT hier anpassen.
+     Vier davon waren vorher frei erfunden (blau-800, blau-700, das helle
+     Gold, der Fokusring): sie stammten aus der Zusammenfassung im
+     Platzhalter, nicht aus der Quelle. */
+  --am-blau-200: #cfdbe7;
+  --am-blau-300: #afc0d2;
+  --am-blau-400: #819bb7;
+  --am-blau-700: #142e47;
+  --am-blau-800: #0a2238;
   --am-blau-900: #051729;
-  --am-blau-800: #0a2138;
-  --am-blau-700: #14304a;
-  --am-gold: #caa960;
-  --am-gold-hell: #e2cc96;
 
-  /* Neutrale Tinten des Blaus, keine eigene Farbfamilie. */
-  --am-text: #dde5ed;
-  --am-text-leise: #95a8bb;
+  /* Gold, Farbton 85,7. */
+  --am-gold-400: #d7ba7b;
+  --am-gold-500: #caa960;
+  --am-gold-600: #b7974e;
+  --am-gold-900: #71560f;
 
-  /* Grundeinheit 4 px. */
-  --am-1: 0.25rem;
-  --am-2: 0.5rem;
-  --am-3: 0.75rem;
-  --am-4: 1rem;
-  --am-5: 1.25rem;
-  --am-6: 1.5rem;
-  --am-8: 2rem;
-  --am-12: 3rem;
-  --am-16: 4rem;
+  /* Halbsemantische Ebene, DUNKELMODUS: Gold handelt, Blau traegt die
+     Flaeche. Das ist die dokumentierte Ausnahme des Standards -- Blau auf
+     Blau traegt nicht. Einen Hellmodus baut move nicht; deshalb stehen
+     diese Zuweisungen hier fest und nicht in einem html.dunkel-Block. */
+  --am-seite: var(--am-blau-900);
+  --am-flaeche-1: var(--am-blau-800);
+  --am-flaeche-2: var(--am-blau-700);
+  --am-rand: var(--am-blau-700);
 
-  --am-rahmen: 1px solid var(--am-blau-700);
+  --am-text-primaer: #ffffff;
+  --am-text-sekundaer: var(--am-blau-200);
+  --am-text-gedaempft: var(--am-blau-300);
+  --am-text-deaktiviert: var(--am-blau-400);
+
+  --am-handlung-ruhend: var(--am-gold-500);
+  --am-handlung-hover: var(--am-gold-400);
+  --am-handlung-aktiv: var(--am-gold-600);
+  --am-handlung-text: var(--am-blau-900);
+
+  /* ABWEICHUNG VOM STANDARD, gemessen und begruendet.
+     Das Paket setzt im Dunkelmodus --am-fokus-ring auf gold-900 (#71560f).
+     Gegen unsere Flaechen bringt das 2,62:1 (Grundflaeche #051729) und
+     2,34:1 (Blockflaeche #0a2238). WCAG 2.4.11 verlangt fuer den
+     Fokusindikator 3:1 gegen die Nachbarfarbe, und derselbe Guide verlangt
+     AA -- der Wert widerspricht sich also selbst, sobald er auf diesen
+     Flaechen liegt. gold-500 bringt 8,06:1 und 7,20:1.
+     Siehe docs/design-guide.md, Abschnitt "Was move davon uebernimmt". */
+  --am-fokus-ring: var(--am-gold-500);
+
+  /* Raum: Grundeinheit 4 px mit Dichte-Hebel. Der Standard sieht
+     weit 1,1 / normal 1,0 / kompakt 0,9 vor; move laeuft auf normal.
+     Ein Wert, eine Stelle -- keine zweite Wertetabelle. */
+  --am-einheit: 0.25rem;
+  --am-skalierung: 1;
+
+  --am-raum-1: calc(var(--am-einheit) * 1 * var(--am-skalierung));
+  --am-raum-2: calc(var(--am-einheit) * 2 * var(--am-skalierung));
+  --am-raum-3: calc(var(--am-einheit) * 3 * var(--am-skalierung));
+  --am-raum-4: calc(var(--am-einheit) * 4 * var(--am-skalierung));
+  --am-raum-5: calc(var(--am-einheit) * 5 * var(--am-skalierung));
+  --am-raum-6: calc(var(--am-einheit) * 6 * var(--am-skalierung));
+  --am-raum-8: calc(var(--am-einheit) * 8 * var(--am-skalierung));
+  --am-raum-12: calc(var(--am-einheit) * 12 * var(--am-skalierung));
+  --am-raum-16: calc(var(--am-einheit) * 16 * var(--am-skalierung));
+
+  /* Zielgroessen: Beruehrung 44 px ohne Ausnahme. */
+  --am-ziel-beruehrung: 2.75rem;
+
+  --am-rand-ruhend: 1px;
+  --am-rand-betont: 2px;
+  --am-rahmen: var(--am-rand-ruhend) solid var(--am-rand);
   --am-breite: 60rem;
 
   color-scheme: dark;
@@ -65,8 +112,8 @@ html {
 body {
   margin: 0;
   padding: 0;
-  background: var(--am-blau-900);
-  color: var(--am-text);
+  background: var(--am-seite);
+  color: var(--am-text-primaer);
   font-family: 'Geist', system-ui, sans-serif;
   font-weight: 400;
   line-height: 1.55;
@@ -79,31 +126,32 @@ pre,
 }
 
 a {
-  color: var(--am-gold);
+  color: var(--am-handlung-ruhend);
   text-underline-offset: 0.2em;
 }
 
 a:focus-visible,
 button:focus-visible,
 select:focus-visible,
-input:focus-visible {
-  outline: 2px solid var(--am-gold);
-  outline-offset: var(--am-1);
+input:focus-visible,
+textarea:focus-visible {
+  outline: var(--am-rand-betont) solid var(--am-fokus-ring);
+  outline-offset: var(--am-raum-1);
 }
 
 .huelle {
   max-width: var(--am-breite);
   margin: 0 auto;
-  padding: var(--am-8) var(--am-5) var(--am-16);
+  padding: var(--am-raum-8) var(--am-raum-5) var(--am-raum-16);
 }
 
 .kopf {
   display: flex;
   align-items: baseline;
-  gap: var(--am-3);
+  gap: var(--am-raum-3);
   border-bottom: var(--am-rahmen);
-  padding-bottom: var(--am-4);
-  margin-bottom: var(--am-8);
+  padding-bottom: var(--am-raum-4);
+  margin-bottom: var(--am-raum-8);
 }
 
 .kopf h1 {
@@ -115,46 +163,46 @@ input:focus-visible {
 
 .kopf p {
   margin: 0;
-  color: var(--am-text-leise);
+  color: var(--am-text-gedaempft);
   font-size: 0.875rem;
 }
 
 h2 {
   font-size: 1.0625rem;
   font-weight: 500;
-  margin: 0 0 var(--am-4);
+  margin: 0 0 var(--am-raum-4);
 }
 
 .block {
   border: var(--am-rahmen);
-  background: var(--am-blau-800);
-  padding: var(--am-5);
-  margin-bottom: var(--am-6);
+  background: var(--am-flaeche-1);
+  padding: var(--am-raum-5);
+  margin-bottom: var(--am-raum-6);
 }
 
 .leise {
-  color: var(--am-text-leise);
+  color: var(--am-text-gedaempft);
   font-size: 0.875rem;
 }
 
 .feld {
   display: block;
-  margin-bottom: var(--am-4);
+  margin-bottom: var(--am-raum-4);
 }
 
 .feld > span {
   display: block;
-  margin-bottom: var(--am-2);
+  margin-bottom: var(--am-raum-2);
   font-size: 0.875rem;
-  color: var(--am-text-leise);
+  color: var(--am-text-gedaempft);
 }
 
 select,
 input[type='file'] {
   width: 100%;
-  padding: var(--am-2) var(--am-3);
-  background: var(--am-blau-900);
-  color: var(--am-text);
+  padding: var(--am-raum-2) var(--am-raum-3);
+  background: var(--am-seite);
+  color: var(--am-text-primaer);
   border: var(--am-rahmen);
   font: inherit;
   font-size: 0.9375rem;
@@ -163,45 +211,45 @@ input[type='file'] {
 /* Der Auswahlknopf eines Dateifelds kommt vom Browser und ist grau -- eine
    dritte Farbfamilie, die der Designguide ausschliesst. Also umfaerben. */
 input[type='file']::file-selector-button {
-  margin-right: var(--am-3);
-  padding: var(--am-1) var(--am-3);
+  margin-right: var(--am-raum-3);
+  padding: var(--am-raum-1) var(--am-raum-3);
   background: transparent;
-  color: var(--am-gold);
-  border: 1px solid var(--am-gold);
+  color: var(--am-handlung-ruhend);
+  border: 1px solid var(--am-handlung-ruhend);
   font: inherit;
   font-size: 0.9375rem;
   cursor: pointer;
 }
 
 input[type='file']::file-selector-button:hover {
-  color: var(--am-gold-hell);
-  border-color: var(--am-gold-hell);
+  color: var(--am-handlung-hover);
+  border-color: var(--am-handlung-hover);
 }
 
 /* Woher die Clips kommen. Eine Wahl, keine Handlung -- die primaere
    Handlung bleibt der eine Knopf darunter. */
 .wahl {
   border: var(--am-rahmen);
-  padding: var(--am-3) var(--am-4) var(--am-4);
-  margin: 0 0 var(--am-4);
+  padding: var(--am-raum-3) var(--am-raum-4) var(--am-raum-4);
+  margin: 0 0 var(--am-raum-4);
 }
 
 .wahl legend {
-  padding: 0 var(--am-2);
+  padding: 0 var(--am-raum-2);
   font-size: 0.875rem;
-  color: var(--am-text-leise);
+  color: var(--am-text-gedaempft);
 }
 
 .wahl-zeile {
   display: flex;
   align-items: baseline;
-  gap: var(--am-2);
-  padding: var(--am-1) 0;
+  gap: var(--am-raum-2);
+  padding: var(--am-raum-1) 0;
   cursor: pointer;
 }
 
 .wahl-zeile input[type='radio'] {
-  accent-color: var(--am-gold);
+  accent-color: var(--am-handlung-ruhend);
   margin: 0;
 }
 
@@ -212,24 +260,24 @@ input[type='file']::file-selector-button:hover {
 /* Eine Einstellung im Template, mit ihrem Prompt. */
 .einstellung {
   border-top: var(--am-rahmen);
-  padding: var(--am-3) 0 0;
-  margin-top: var(--am-3);
+  padding: var(--am-raum-3) 0 0;
+  margin-top: var(--am-raum-3);
 }
 
 .einstellung-kopf {
   display: flex;
   align-items: baseline;
-  gap: var(--am-3);
-  margin-bottom: var(--am-2);
+  gap: var(--am-raum-3);
+  margin-bottom: var(--am-raum-2);
   cursor: pointer;
 }
 
 textarea,
 input[type='text'] {
   width: 100%;
-  padding: var(--am-2) var(--am-3);
-  background: var(--am-blau-900);
-  color: var(--am-text);
+  padding: var(--am-raum-2) var(--am-raum-3);
+  background: var(--am-seite);
+  color: var(--am-text-primaer);
   border: var(--am-rahmen);
   font: inherit;
   font-size: 0.9375rem;
@@ -238,24 +286,25 @@ input[type='text'] {
 
 textarea::placeholder,
 input[type='text']::placeholder {
-  color: var(--am-text-leise);
+  color: var(--am-text-gedaempft);
 }
 
 /* Genau eine primaere Handlung je Ansicht: Job anlegen. */
 .primaer {
+  min-height: var(--am-ziel-beruehrung);
   display: inline-block;
-  padding: var(--am-3) var(--am-6);
-  background: var(--am-gold);
-  color: var(--am-blau-900);
-  border: 1px solid var(--am-gold);
+  padding: var(--am-raum-3) var(--am-raum-6);
+  background: var(--am-handlung-ruhend);
+  color: var(--am-seite);
+  border: 1px solid var(--am-handlung-ruhend);
   font: inherit;
   font-weight: 500;
   cursor: pointer;
 }
 
 .primaer:hover:not(:disabled) {
-  background: var(--am-gold-hell);
-  border-color: var(--am-gold-hell);
+  background: var(--am-handlung-hover);
+  border-color: var(--am-handlung-hover);
 }
 
 .primaer:disabled {
@@ -264,11 +313,12 @@ input[type='text']::placeholder {
 }
 
 .sekundaer {
+  min-height: var(--am-ziel-beruehrung);
   display: inline-block;
-  padding: var(--am-2) var(--am-4);
+  padding: var(--am-raum-2) var(--am-raum-4);
   background: transparent;
-  color: var(--am-gold);
-  border: 1px solid var(--am-gold);
+  color: var(--am-handlung-ruhend);
+  border: 1px solid var(--am-handlung-ruhend);
   font: inherit;
   cursor: pointer;
 }
@@ -295,13 +345,13 @@ table {
 th,
 td {
   text-align: left;
-  padding: var(--am-2) var(--am-3);
+  padding: var(--am-raum-2) var(--am-raum-3);
   border-bottom: var(--am-rahmen);
   vertical-align: top;
 }
 
 th {
-  color: var(--am-text-leise);
+  color: var(--am-text-gedaempft);
   font-weight: 500;
   font-size: 0.8125rem;
 }
@@ -314,46 +364,46 @@ th {
 }
 
 .stand-done {
-  color: var(--am-gold);
+  color: var(--am-handlung-ruhend);
 }
 
 .stand-failed {
-  color: var(--am-text);
-  border-bottom: 2px solid var(--am-gold);
+  color: var(--am-text-primaer);
+  border-bottom: 2px solid var(--am-handlung-ruhend);
 }
 
 progress {
   width: 100%;
-  height: var(--am-2);
+  height: var(--am-raum-2);
   appearance: none;
   border: none;
-  background: var(--am-blau-700);
+  background: var(--am-flaeche-2);
 }
 
 progress::-webkit-progress-bar {
-  background: var(--am-blau-700);
+  background: var(--am-flaeche-2);
 }
 
 progress::-webkit-progress-value {
-  background: var(--am-gold);
+  background: var(--am-handlung-ruhend);
 }
 
 progress::-moz-progress-bar {
-  background: var(--am-gold);
+  background: var(--am-handlung-ruhend);
 }
 
 video {
   width: 100%;
   max-width: 100%;
   border: var(--am-rahmen);
-  background: var(--am-blau-900);
+  background: var(--am-seite);
 }
 
 .meldung {
   border: var(--am-rahmen);
-  border-left: 2px solid var(--am-gold);
-  padding: var(--am-3) var(--am-4);
-  margin-top: var(--am-4);
+  border-left: 2px solid var(--am-handlung-ruhend);
+  padding: var(--am-raum-3) var(--am-raum-4);
+  margin-top: var(--am-raum-4);
   font-size: 0.9375rem;
 }
 
