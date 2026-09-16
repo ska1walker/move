@@ -80,7 +80,7 @@ spec:
               value: "1"
             - name: MOVE_POLL_INTERVAL_MS
               value: "2000"
-            # Die drei Werte aus dem envs:-Block. Alle in derselben Form
+            # Die vier Werte aus dem envs:-Block. Alle in derselben Form
             # gelesen: `hasKey` entscheidet, ob der Nutzer etwas gesetzt hat,
             # und NICHT `| default ""`.
             #
@@ -122,9 +122,17 @@ spec:
             # Klartext, statt still nichts zu tun.
             - name: FAL_KEY
               value: {{ if hasKey $oe "FAL_KEY" }}{{ $oe.FAL_KEY | quote }}{{ else }}{{ "" | quote }}{{ end }}
-            # Leer heisst: der Standard aus generierung.py.
+            # Leer heisst: der Standard aus generierung.py. Gilt NUR fuer
+            # Einstellungen OHNE Referenzbild -- siehe modell_fuer.
             - name: MOVE_FAL_MODEL
               value: {{ if hasKey $oe "MOVE_FAL_MODEL" }}{{ $oe.MOVE_FAL_MODEL | quote }}{{ else }}{{ "" | quote }}{{ end }}
+            # Der Bildpfad hat sein eigenes Modell, und das ist kein Komfort:
+            # der Standard fuer Text (fal-ai/ltx-video) ist ein
+            # Text-zu-Video-Endpunkt und kennt image_url nicht. Wuerde
+            # MOVE_FAL_MODEL auch hier gelten, entwertete ein Textmodell dort
+            # still jede Figur mit Referenzbild -- bezahlt und wirkungslos.
+            - name: MOVE_FAL_BILD_MODEL
+              value: {{ if hasKey $oe "MOVE_FAL_BILD_MODEL" }}{{ $oe.MOVE_FAL_BILD_MODEL | quote }}{{ else }}{{ "" | quote }}{{ end }}
             # Leer heisst: DEFAULT_MAX_FAL_CLIPS aus runner.py. Ein Tippfehler
             # faellt dort nicht still auf die Vorgabe zurueck, sondern
             # scheitert.

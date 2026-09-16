@@ -21,6 +21,8 @@ from pathlib import Path
 from unittest import mock
 
 from move_worker.generierung import (
+    DEFAULT_BILD_MODEL,
+    DEFAULT_MODEL,
     Anfrage,
     FalFehler,
     Generator,
@@ -28,6 +30,7 @@ from move_worker.generierung import (
     default_model,
     fal_key,
     herunterladen,
+    modell_fuer,
     video_url_aus,
 )
 
@@ -62,7 +65,52 @@ class TestAnfrage(unittest.TestCase):
     def test_argumente_enthalten_prompt_und_laenge(self):
         args = self.anfrage().argumente()
         self.assertEqual(args["prompt"], "a wide desert at dawn")
-        self.assertEqual(args["duration"], 3.0)
+        self.assertEqual(args["duration"], 3)
+
+    def test_dauer_ist_eine_ganze_zahl(self):
+        """Nicht 3.0, sondern 3.
+
+        assertEqual(3, 3.0) ist in Python wahr -- diese Zusicherung hier ist
+        also der einzige Ort, an dem der TYP ueberhaupt geprueft wird. Er ist
+        der Grund fuer diesen Test: in JSON wird aus 3.0 die Zahl "3.0", und
+        ein Schema, das eine ganze Sekunde erwartet, lehnt sie ab.
+        """
+        args = self.anfrage().argumente()
+        self.assertIsInstance(args["duration"], int)
+        self.assertNotIsInstance(args["duration"], bool)
+
+    def test_dauer_wird_aufgerundet_nie_ab(self):
+        """Aufrunden ist hier kein Geschmack, sondern Geld.
+
+        Der Assembler lehnt einen Clip ab, der kuerzer ist als seine
+        Einstellung (check_clips). Ein abgerundeter Wert waere also bezahlt
+        und unbrauchbar. 1.996 s ist der Fall, den `round(x, 2)` auf 2.0
+        gebracht haette -- 4 ms zu wenig.
+        """
+        for sekunden, erwartet in ((1.996, 2), (2.0, 2), (2.001, 3), (0.2, 1), (8.0, 8)):
+            with self.subTest(sekunden=sekunden):
+                args = self.anfrage(sekunden=sekunden).argumente()
+                self.assertEqual(args["duration"], erwartet)
+                self.assertGreaterEqual(args["duration"], sekunden)
+
+    def test_dauer_als_zeichenkette(self):
+        """Fuer Modelle, die "8" wollen und nicht 8 -- gemessen bei seedance."""
+        with mock.patch.dict(os.environ, {"MOVE_FAL_DAUER_TEXT": "1"}):
+            args = self.anfrage().argumente()
+        self.assertEqual(args["duration"], "3")
+
+    def test_dauer_abschaltbar(self):
+        """Modelle mit fester Laenge lehnen ein unbekanntes duration ab."""
+        with mock.patch.dict(os.environ, {"MOVE_FAL_DAUER_AUS": "1"}):
+            args = self.anfrage().argumente()
+        self.assertNotIn("duration", args)
+        self.assertEqual(args["prompt"], "a wide desert at dawn")
+
+    def test_dauer_umbenennbar(self):
+        with mock.patch.dict(os.environ, {"MOVE_FAL_DAUER_ARGUMENT": "num_seconds"}):
+            args = self.anfrage().argumente()
+        self.assertEqual(args["num_seconds"], 3)
+        self.assertNotIn("duration", args)
 
     def test_extra_wird_durchgereicht(self):
         args = self.anfrage(extra=(("aspect_ratio", "16:9"),)).argumente()
@@ -84,6 +132,43 @@ class TestAnfrage(unittest.TestCase):
             self.assertNotEqual(
                 basis, self.anfrage(**abweichung).schluessel(), f"gleich trotz {abweichung}"
             )
+
+
+class TestAufrufform(unittest.TestCase):
+    """`arguments` geht als Schluesselwort raus, nicht als zweites Argument.
+
+    Das Doppel hier nimmt es NUR als Schluesselwort an. Damit schlaegt der
+    Test fehl, wenn der Aufruf je wieder positionell wird -- was fuer sich
+    genommen funktioniert, aber jede Verwechslung von Modell und Argumenten
+    still durchlaesst.
+    """
+
+    class StrengesDoppel:
+        def __init__(self):
+            self.gesehen: list[dict] = []
+
+        def subscribe(self, application, *, arguments, **kwargs):
+            self.gesehen.append({"model": application, "args": dict(arguments), **kwargs})
+            return {"video": {"url": "https://x/a.mp4"}}
+
+        def upload_file(self, path):
+            return f"https://fal.example/{Path(path).name}"
+
+    def test_generator_ruft_mit_schluesselwort(self):
+        doppel = self.StrengesDoppel()
+        with tempfile.TemporaryDirectory() as tmp:
+            generator = Generator(cache_dir=Path(tmp), client=doppel, timeout_s=42)
+            anfrage = Anfrage(
+                prompt="p", sekunden=2.0, breite=1280, height=720, model="fal-ai/x"
+            )
+            with mock.patch("move_worker.generierung.herunterladen", return_value=17):
+                generator.erzeuge(anfrage)
+
+        self.assertEqual(len(doppel.gesehen), 1)
+        aufruf = doppel.gesehen[0]
+        self.assertEqual(aufruf["model"], "fal-ai/x")
+        self.assertEqual(aufruf["args"]["prompt"], "p")
+        self.assertEqual(aufruf["client_timeout"], 42)
 
 
 class TestUrlAuslesen(unittest.TestCase):
@@ -114,21 +199,128 @@ class TestUrlAuslesen(unittest.TestCase):
             video_url_aus({"video": {"url": "file:///etc/passwd"}})
 
 
+OHNE_SCHLUESSEL = {"FAL_KEY": "", "FAL_KEY_ID": "", "FAL_KEY_SECRET": ""}
+
+
 class TestGeheimnis(unittest.TestCase):
     def test_schluessel_wird_aus_meldungen_geraeumt(self):
         with mock.patch.dict(os.environ, {"FAL_KEY": "geheim-123"}):
             self.assertNotIn("geheim-123", _ohne_geheimnis("Fehler mit geheim-123 drin"))
             self.assertIn("<FAL_KEY>", _ohne_geheimnis("Fehler mit geheim-123 drin"))
 
+    def test_auch_das_paar_wird_geraeumt(self):
+        """Seit fal_key das Paar akzeptiert, muss es hier mitgehen.
+
+        Sonst hat die Funktion eine Luecke genau in dem Pfad, den sie
+        absichert: die Meldung landet in render_job.error und damit in der
+        Oberflaeche.
+        """
+        with mock.patch.dict(
+            os.environ, {"FAL_KEY": "", "FAL_KEY_ID": "kennung", "FAL_KEY_SECRET": "sehr-geheim"}
+        ):
+            geraeumt = _ohne_geheimnis("401 fuer kennung:sehr-geheim")
+        self.assertNotIn("sehr-geheim", geraeumt)
+        self.assertIn("<FAL_KEY_SECRET>", geraeumt)
+
     def test_fehlender_schluessel_sagt_wo_er_hingehoert(self):
-        with mock.patch.dict(os.environ, {"FAL_KEY": ""}):
+        with mock.patch.dict(os.environ, OHNE_SCHLUESSEL):
             with self.assertRaises(FalFehler) as ctx:
                 fal_key()
         self.assertIn("olaresEnv", str(ctx.exception))
 
+    def test_paar_zaehlt_als_schluessel(self):
+        """fal-client akzeptiert FAL_KEY_ID + FAL_KEY_SECRET (gemessen in
+        _resolve_env_or_colab_auth). Wer das gesetzt hat, darf hier nicht
+        "kein Schluessel" lesen."""
+        with mock.patch.dict(
+            os.environ, {"FAL_KEY": "", "FAL_KEY_ID": "kennung", "FAL_KEY_SECRET": "geheim"}
+        ):
+            self.assertEqual(fal_key(), "kennung:geheim")
+
+    def test_halbes_paar_zaehlt_nicht(self):
+        with mock.patch.dict(
+            os.environ, {"FAL_KEY": "", "FAL_KEY_ID": "kennung", "FAL_KEY_SECRET": ""}
+        ):
+            with self.assertRaises(FalFehler):
+                fal_key()
+
     def test_modell_aus_der_umgebung(self):
         with mock.patch.dict(os.environ, {"MOVE_FAL_MODEL": "fal-ai/eigen"}):
             self.assertEqual(default_model(), "fal-ai/eigen")
+
+
+class TestModellwahl(unittest.TestCase):
+    """Text- und Bildpfad brauchen verschiedene Endpunkte.
+
+    fal-ai/ltx-video existiert, ist aber TEXT-zu-Video und kennt kein
+    image_url. Eine Figur mit Referenzbild an diesem Endpunkt waere bezahlt
+    und wirkungslos -- das ist der Fehler, den diese vier Tests festnageln.
+    """
+
+    def test_ohne_bild_das_textmodell(self):
+        with mock.patch.dict(os.environ, {"MOVE_FAL_MODEL": "", "MOVE_FAL_BILD_MODEL": ""}):
+            self.assertEqual(modell_fuer(False), DEFAULT_MODEL)
+
+    def test_mit_bild_das_bildmodell(self):
+        with mock.patch.dict(os.environ, {"MOVE_FAL_MODEL": "", "MOVE_FAL_BILD_MODEL": ""}):
+            self.assertEqual(modell_fuer(True), DEFAULT_BILD_MODEL)
+            self.assertNotEqual(DEFAULT_BILD_MODEL, DEFAULT_MODEL)
+
+    def test_move_fal_model_greift_nicht_in_den_bildpfad(self):
+        """Absichtlich. Sonst entwertet ein Textmodell in MOVE_FAL_MODEL
+        still jede Figur mit Referenzbild."""
+        with mock.patch.dict(
+            os.environ, {"MOVE_FAL_MODEL": "fal-ai/nur-text", "MOVE_FAL_BILD_MODEL": ""}
+        ):
+            self.assertEqual(modell_fuer(False), "fal-ai/nur-text")
+            self.assertEqual(modell_fuer(True), DEFAULT_BILD_MODEL)
+
+    def test_bildmodell_aus_der_umgebung(self):
+        with mock.patch.dict(os.environ, {"MOVE_FAL_BILD_MODEL": "fal-ai/eigenes-bild"}):
+            self.assertEqual(modell_fuer(True), "fal-ai/eigenes-bild")
+
+
+class TestClientSignatur(unittest.TestCase):
+    """Gegen den echten fal-client, wenn er installiert ist.
+
+    Das ist der einzige Test hier, der etwas ueber die Bibliothek selbst
+    behauptet, und er prueft genau die drei Dinge, auf die der Aufruf in
+    `Generator.erzeuge` baut. Ohne installierten fal-client uebersprungen --
+    der Kern des Workers laeuft ohne ihn, genau wie ohne librosa.
+    """
+
+    def setUp(self):
+        try:
+            import fal_client  # noqa: PLC0415
+        except ImportError:
+            self.skipTest("fal-client ist nicht installiert")
+        self.fal_client = fal_client
+
+    def test_arguments_ist_als_schluesselwort_erlaubt(self):
+        import inspect  # noqa: PLC0415
+
+        parameter = inspect.signature(self.fal_client.subscribe).parameters
+        self.assertIn("arguments", parameter)
+        self.assertEqual(
+            parameter["arguments"].kind, inspect.Parameter.POSITIONAL_OR_KEYWORD
+        )
+
+    def test_client_timeout_existiert_und_ist_schluesselwort(self):
+        import inspect  # noqa: PLC0415
+
+        parameter = inspect.signature(self.fal_client.subscribe).parameters
+        self.assertIn("client_timeout", parameter)
+        self.assertEqual(parameter["client_timeout"].kind, inspect.Parameter.KEYWORD_ONLY)
+
+    def test_import_braucht_keinen_schluessel(self):
+        """Der Client holt seine Anmeldedaten lazy (cached_property _auth).
+
+        Wichtig, weil FAL_KEY im Manifest optional ist: eine Installation
+        ohne Schluessel darf nicht am Import scheitern.
+        """
+        with mock.patch.dict(os.environ, OHNE_SCHLUESSEL):
+            self.assertTrue(hasattr(self.fal_client, "subscribe"))
+            self.assertTrue(hasattr(self.fal_client, "upload_file"))
 
 
 class TestDownload(unittest.TestCase):

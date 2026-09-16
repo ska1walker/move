@@ -22,7 +22,7 @@ scripts/check-chart.sh         Vorab-Guards, aus dem Insilo-Original umgebaut
 scripts/make-icon.py           erzeugt icon.png reproduzierbar, ohne Bildbibliothek
 icon.png                       512x512, Hanseatenblau + Gold
 OlaresManifest.yaml            Root-Manifest (Store)
-move/Chart.yaml                Version 26.9.6
+move/Chart.yaml                Version 26.9.7
 move/OlaresManifest.yaml       Chart-Manifest, byteweise identisch zum Root
 move/values.yaml               keine Pins, keine Secrets
 move/values-olares-stub.yaml   Stub für helm lint/template
@@ -44,8 +44,8 @@ Beide Images bauen mit dem **Repo-Wurzelverzeichnis** als Kontext, weil
 `db/schema.sql` von Web und Worker gemeinsam gelesen wird:
 
 ```bash
-docker build -f worker/Dockerfile -t moveworker:26.9.6 .
-docker build -f web/Dockerfile    -t move:26.9.6 .
+docker build -f worker/Dockerfile -t moveworker:26.9.7 .
+docker build -f web/Dockerfile    -t move:26.9.7 .
 ```
 
 Chart-Stand: ein Entrance auf `move` (Port 3000), Worker `moveworker` ohne
@@ -108,8 +108,8 @@ GPU-Zeit und Trainingsdaten.
 
 | | Woher |
 |---|---|
-| erster echter fal-Aufruf | Die Generierung ist gebaut und gegen ein Doppel getestet, aber nie gegen fal gelaufen. fal.ai und docs.fal.ai sind vom Proxy gesperrt. **Konkret unbelegt: die Argumentnamen** `image_url` und `seed` — begründete Annahme, kein gemessenes Schema. Passen sie nicht, scheitert der Job mit der vollständigen Antwort in `render_job.error`, und `MOVE_FAL_BILD_ARGUMENT` bzw. `MOVE_FAL_SEED_ARGUMENT` korrigieren es ohne neues Image. |
-| `running` auf der Box | **26.9.5 läuft dort**, gemeldet und bestätigt. Auf der Box passiert nichts von selbst: nach §9.2 drückt ein Mensch „Upgrade". |
+| erster echter fal-Aufruf | Die Generierung ist gebaut und gegen ein Doppel getestet, aber **nie gegen fal gelaufen**. Was seit 26.9.7 nicht mehr unbelegt ist: die Signatur von `fal_client.subscribe` (am Quelltext von 1.0.1, der gepinnten Version), dass der Import ohne Schlüssel durchläuft, und die Argumentnamen `image_url` und `seed` (an zwei Modellseiten). Offen bleibt das **vollständige Schema** eines Video-Modells und die Form der Antwort: `fal.ai` und `docs.fal.ai` sind vom Proxy gesperrt, nur der Suchindex und `pypi.org` kommen durch. Passt ein Argument nicht, scheitert der Job mit der vollständigen Antwort in `render_job.error`; `MOVE_FAL_BILD_ARGUMENT`, `MOVE_FAL_SEED_ARGUMENT` und `MOVE_FAL_DAUER_*` korrigieren es ohne neues Image. |
+| `running` auf der Box | **26.9.5 läuft dort**, gemeldet und bestätigt. 26.9.6 und 26.9.7 sind veröffentlicht, aber dort nicht gemessen. Auf der Box passiert nichts von selbst: nach §9.2 drückt ein Mensch „Upgrade". |
 
 Erledigt und gemessen: Repo öffentlich (Icon HTTP 200), beide ghcr-Pakete
 anonym abrufbar, `docs/olares-learnings.md` und `docs/design-guide.md` liegen
@@ -153,7 +153,7 @@ jetzt korrigiert.
 | Chart im Katalog | **26.9.5** ausgeliefert: HTTP 200, 9463 Byte, einmal gzippt, `type: system` drin, Render 3 Dokumente alle mit `apiVersion` und `kind` |
 | Images auf ghcr | 26.9.1 bis 26.9.5, alle anonym HTTP 200 |
 | Katalogeintrag | 26.9.5, live gemessen (PR #77), Hash `98a16f17…` |
-| Chart 26.9.6 | gepackt und geprüft, noch nicht veröffentlicht |
+| Chart 26.9.7 | gepackt und geprüft, noch nicht veröffentlicht |
 | `running` auf der Box | **nicht gemessen** — Weg A in `docs/installieren.md` |
 
 Vier Guards sind daraus entstanden, jeder dort, wo der Fehler durchkam:
@@ -290,7 +290,7 @@ Weil eine App nicht dadurch in den Marktplatz kommt, dass sie hier im Repo
 liegt. Eine **Market Source ist ein eigener Webdienst** (bei AImighty:
 Cloudflare Pages, Repo `bayerhazard/aimighty-market`). Sie listet die App
 unter `/api/v1/appstore/info` und liefert das Chart unter
-`/api/v1/applications/move/chart?fileName=move-26.9.6.tgz`. Das Chart steckt
+`/api/v1/applications/move/chart?fileName=move-26.9.7.tgz`. Das Chart steckt
 dort als base64 in einer Tabelle. In **move ist noch nichts davon eingetragen** —
 dieses Repo enthält nur das Chart selbst.
 
@@ -302,8 +302,8 @@ dieses Repo enthält nur das Chart selbst.
 
 | Datei | wohin |
 |---|---|
-| `dist/move-26.9.6.tgz` | das gepackte Chart |
-| `dist/move-26.9.6.tgz.base64` | eine Zeile, als Wert unter dem Schlüssel `"move-26.9.6.tgz"` |
+| `dist/move-26.9.7.tgz` | das gepackte Chart |
+| `dist/move-26.9.7.tgz.base64` | eine Zeile, als Wert unter dem Schlüssel `"move-26.9.7.tgz"` |
 | `dist/markteintrag.json` | die Metadatenfelder, aus dem Manifest gelesen |
 
 Der CI-Job **Chart-Paket** führt das bei jedem Push mit echtem Helm aus und

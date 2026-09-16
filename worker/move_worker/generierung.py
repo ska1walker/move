@@ -21,16 +21,40 @@ Ohne Zwischenspeicher wuerde derselbe Job danach alle Einstellungen neu
 generieren -- und neu abgerechnet. Der Schluessel ist ein Hash ueber Modell,
 Prompt, Laenge und Format; liegt die Datei schon da, wird sie genommen.
 
-**Das Modell ist kein fest verdrahteter Name.** Welche Video-Modelle es bei
-fal gibt und wie ihre Ausgabe aussieht, konnte ich nicht nachsehen -- fal.ai
-und docs.fal.ai sind vom Egress-Proxy gesperrt. Das Modell kommt deshalb aus
-`MOVE_FAL_MODEL` bzw. je Job, und die Antwort wird tolerant nach einer URL
-durchsucht. Findet sich keine, scheitert der Job MIT der Antwort im Text --
-statt zu raten.
+**Das Modell ist kein fest verdrahteter Name.** Es kommt je Einstellung aus
+dem Job, sonst aus `MOVE_FAL_MODEL` bzw. `MOVE_FAL_BILD_MODEL`, sonst aus den
+Vorgaben unten. Die Antwort wird tolerant nach einer URL durchsucht; findet
+sich keine, scheitert der Job MIT der Antwort im Text -- statt zu raten.
+
+Was hier belegt ist und was nicht
+---------------------------------
+`fal.ai`, `docs.fal.ai` und der Mintlify-Spiegel sind vom Egress-Proxy
+gesperrt (`curl: (56) CONNECT tunnel failed, response 403`, WebFetch
+`EGRESS_BLOCKED`). Der Suchindex und `pypi.org` kommen dagegen durch, und
+damit ist ein Teil der frueheren Annahmen jetzt gemessen:
+
+    GEMESSEN am Quelltext von fal-client 1.0.1 -- derselben Version, die
+    worker/requirements.txt festnagelt, nicht einer aehnlichen:
+      * subscribe(application, arguments, *, ..., start_timeout=None,
+        client_timeout=None). `arguments` POSITIONAL_OR_KEYWORD,
+        `client_timeout` KEYWORD_ONLY.
+      * Der Schluessel wird LAZY geholt: `SyncClient._auth` ist eine
+        cached_property. `import fal_client` ohne FAL_KEY laeuft durch --
+        nachgemessen, und wichtig, weil FAL_KEY im Manifest optional ist.
+      * Neben FAL_KEY akzeptiert der Client FAL_KEY_ID + FAL_KEY_SECRET.
+
+    GEMESSEN an den Modellseiten (ueber die Suche, nicht ueber den Abruf):
+      * image_url und seed sind echte Argumentnamen.
+      * fal-ai/ltx-video existiert und ist TEXT-zu-Video.
+      * duration taucht bei einem Modell als Zeichenkette "8" auf.
+
+    NICHT gemessen: das vollstaendige Schema irgendeines Video-Modells, und
+    ob ein Bild-zu-Video-Modell das Referenzbild als ersten Bildinhalt nimmt
+    oder nur als Stilvorgabe. Dafuer braeuchte es einen echten Aufruf.
 
 Der Schluessel
 --------------
-`FAL_KEY` aus der Umgebung, so wie fal-client es selbst erwartet. Er steht an
+`FAL_KEY` aus der Umgebung, so wie fal-client es selbst liest. Er steht an
 keiner Stelle im Repo und wird nirgends geloggt: `_ohne_geheimnis` raeumt ihn
 aus jeder Meldung, bevor sie in die Job-Zeile wandert.
 """
@@ -40,6 +64,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import math
 import os
 import urllib.request
 from dataclasses import dataclass, field
@@ -48,7 +73,21 @@ from typing import Any, Protocol
 
 LOG = logging.getLogger(__name__)
 
+# Das Textmodell. GEMESSEN existent: fal.ai/models/fal-ai/ltx-video ist eine
+# echte Endpunkt-ID -- und sie ist TEXT-zu-Video. Das ist der Punkt, an dem
+# die Wahl des Modells nicht kosmetisch ist: ein Text-zu-Video-Endpunkt hat
+# keinen Parameter fuer ein Referenzbild. Wer eine Figur mit Bild an dieses
+# Modell schickt, bekommt entweder einen Fehler oder -- schlimmer -- ein
+# Video, in dem das Bild einfach keine Rolle gespielt hat. Bezahlt, und die
+# Figur sieht in jeder Einstellung anders aus.
 DEFAULT_MODEL = "fal-ai/ltx-video"
+
+# Deshalb ein zweites Modell fuer den Bildpfad, und die Wahl faellt danach,
+# OB ein Referenzbild vorliegt (siehe modell_fuer). GEMESSEN: der Endpunkt
+# fal-ai/ltx-2/image-to-video verlangt genau zwei Argumente, image_url und
+# prompt -- die beiden, die move ohnehin schickt.
+DEFAULT_BILD_MODEL = "fal-ai/ltx-2/image-to-video"
+
 DEFAULT_TIMEOUT_S = 900
 DOWNLOAD_TIMEOUT_S = 300
 BLOCK = 1024 * 1024
@@ -70,17 +109,31 @@ class FalClient(Protocol):
 
 # Unter welchem Argumentnamen ein Modell sein Referenzbild erwartet.
 #
-# UNBELEGT, und das ist wichtig zu wissen. fal.ai und docs.fal.ai sind vom
-# Egress-Proxy gesperrt, ich konnte kein einziges Modellschema nachlesen.
-# `image_url` ist der Name, den Bild-zu-Video-Modelle ueblicherweise tragen --
-# eine begruendete Annahme, keine Messung. Passt er nicht, scheitert der Job
-# MIT der vollstaendigen Antwort von fal in `render_job.error`, und daraus ist
-# es hier in einer Zeile zu korrigieren; zur Laufzeit geht es ohne neues Image
-# ueber MOVE_FAL_BILD_ARGUMENT.
+# BELEGT an zwei unabhaengigen Modellschemata: fal-ai/ltx-2/image-to-video
+# nennt image_url als eines seiner zwei Pflichtargumente, und das Beispiel zu
+# bytedance/seedance-2.0/image-to-video schickt image_url ebenfalls. Der
+# Ueberschreiber bleibt trotzdem, denn belegt ist der Name fuer diese Modelle,
+# nicht fuer jedes.
 BILD_ARGUMENT = "image_url"
 
-# Dasselbe fuer den Seed. Auch das ist der uebliche Name, nicht mehr.
+# Dasselbe fuer den Seed. BELEGT am Beispiel zu fal-ai/flux/dev, das
+# seed: 6252023 neben dem Prompt schickt.
 SEED_ARGUMENT = "seed"
+
+# Und fuer die Laenge. Hier ist die Lage anders als bei den beiden oben: der
+# NAME ist belegt (duration), der TYP ist es nicht einheitlich. Das Beispiel
+# zu seedance schickt "8" als ZEICHENKETTE, andere Modelle nehmen eine Zahl,
+# und manche nur einen festen Satz von Werten. Deshalb drei Schalter statt
+# einer Annahme -- alle drei ohne neues Image umstellbar:
+#
+#   MOVE_FAL_DAUER_ARGUMENT   anderer Name
+#   MOVE_FAL_DAUER_TEXT=1     als Zeichenkette senden, wie bei seedance
+#   MOVE_FAL_DAUER_AUS=1      gar nicht senden, fuer Modelle mit fester Laenge
+#
+# Der Wert selbst geht IMMER als ganze Sekunde, aufgerundet: der Assembler
+# lehnt einen Clip ab, der kuerzer ist als seine Einstellung (check_clips),
+# und dann waere der Aufruf bezahlt und der Job trotzdem gescheitert.
+DAUER_ARGUMENT = "duration"
 
 
 def bild_argument() -> str:
@@ -89,6 +142,18 @@ def bild_argument() -> str:
 
 def seed_argument() -> str:
     return os.environ.get("MOVE_FAL_SEED_ARGUMENT", "").strip() or SEED_ARGUMENT
+
+
+def dauer_argument() -> str:
+    return os.environ.get("MOVE_FAL_DAUER_ARGUMENT", "").strip() or DAUER_ARGUMENT
+
+
+def dauer_als_text() -> bool:
+    return os.environ.get("MOVE_FAL_DAUER_TEXT", "").strip() == "1"
+
+
+def dauer_senden() -> bool:
+    return os.environ.get("MOVE_FAL_DAUER_AUS", "").strip() != "1"
 
 
 @dataclass(frozen=True)
@@ -123,11 +188,23 @@ class Anfrage:
     # kennen muss.
     extra: tuple[tuple[str, Any], ...] = ()
 
+    def ganze_sekunden(self) -> int:
+        """Laenge als ganze Sekunde, AUFGERUNDET.
+
+        Warum nicht `round`: `round(1.996, 2)` ergibt 2.0, und 2.0 s sind
+        4 ms kuerzer als die Einstellung, die der Clip fuellen soll. Der
+        Assembler laesst das nicht durch (check_clips vergleicht gegen
+        `plan.source_ms`), also waere der Aufruf bezahlt und der Job
+        gescheitert. Aufrunden kostet nichts: laengeres Material schneidet
+        der Assembler ohnehin auf die Einstellung.
+        """
+        return max(1, math.ceil(self.sekunden - 1e-9))
+
     def argumente(self, bild_url: str = "") -> dict[str, Any]:
-        args: dict[str, Any] = {
-            "prompt": self.prompt,
-            "duration": round(self.sekunden, 2),
-        }
+        args: dict[str, Any] = {"prompt": self.prompt}
+        if dauer_senden():
+            dauer = self.ganze_sekunden()
+            args[dauer_argument()] = str(dauer) if dauer_als_text() else dauer
         if bild_url:
             args[bild_argument()] = bild_url
         if self.seed is not None:
@@ -175,14 +252,31 @@ class Anfrage:
 
 
 def fal_key() -> str:
+    """Prueft frueh, dass ueberhaupt ein Schluessel da ist.
+
+    Der Client holt seine Anmeldedaten lazy (cached_property `_auth`) und
+    wuerde erst beim ersten Aufruf mit MissingCredentialsError scheitern --
+    also mitten im Job statt davor.
+
+    Das Paar FAL_KEY_ID + FAL_KEY_SECRET zaehlt mit, weil fal-client es in
+    `_resolve_env_or_colab_auth` genauso akzeptiert. Wer es gesetzt hat, soll
+    hier nicht faelschlich "kein Schluessel" lesen.
+    """
     schluessel = os.environ.get("FAL_KEY", "").strip()
-    if not schluessel:
-        raise FalFehler(
-            "FAL_KEY ist nicht gesetzt. Der Worker liest ihn aus der Umgebung; "
-            "im Chart kommt er ueber .Values.olaresEnv.FAL_KEY dorthin und "
-            "steht an keiner Stelle im Repo."
-        )
-    return schluessel
+    if schluessel:
+        return schluessel
+
+    kennung = os.environ.get("FAL_KEY_ID", "").strip()
+    geheim = os.environ.get("FAL_KEY_SECRET", "").strip()
+    if kennung and geheim:
+        return f"{kennung}:{geheim}"
+
+    raise FalFehler(
+        "FAL_KEY ist nicht gesetzt. Der Worker liest ihn aus der Umgebung; "
+        "im Chart kommt er ueber .Values.olaresEnv.FAL_KEY dorthin und "
+        "steht an keiner Stelle im Repo. Alternativ akzeptiert fal-client "
+        "FAL_KEY_ID zusammen mit FAL_KEY_SECRET."
+    )
 
 
 def fingerabdruck(schluessel: str) -> str:
@@ -211,10 +305,19 @@ def _ohne_geheimnis(text: str) -> str:
 
     Fehlermeldungen wandern in `render_job.error` und damit in die
     Oberflaeche. Ein Schluessel, der einmal dort steht, steht dort dauerhaft.
+
+    FAL_KEY_SECRET geht mit, seit `fal_key` das Paar akzeptiert -- sonst
+    haette diese Funktion eine Luecke genau in dem Pfad, den sie absichern
+    soll. Laengster Wert zuerst, damit das Ersetzen des kuerzeren nicht den
+    laengeren zerschneidet und einen Rest stehen laesst.
     """
-    schluessel = os.environ.get("FAL_KEY", "").strip()
-    if schluessel and schluessel in text:
-        text = text.replace(schluessel, "<FAL_KEY>")
+    geheimnisse = {
+        name: os.environ.get(name, "").strip()
+        for name in ("FAL_KEY", "FAL_KEY_SECRET")
+    }
+    for name, wert in sorted(geheimnisse.items(), key=lambda p: -len(p[1])):
+        if wert and wert in text:
+            text = text.replace(wert, f"<{name}>")
     return text
 
 
@@ -409,9 +512,16 @@ class Generator:
         )
 
         try:
+            # `arguments` als Schluesselwort und `client_timeout` als
+            # Schluesselwort -- beides gegen die echte Signatur von
+            # fal-client 1.0.1 geprueft, nicht gegen die Doku:
+            #   subscribe(application, arguments, *, ..., client_timeout=None)
+            # `arguments` ist POSITIONAL_OR_KEYWORD, `client_timeout` ist
+            # KEYWORD_ONLY. Der Name steht damit fest und ein Dreher in der
+            # Reihenfolge kann nicht mehr durchrutschen.
             antwort = client.subscribe(
                 anfrage.model,
-                anfrage.argumente(url),
+                arguments=anfrage.argumente(url),
                 client_timeout=self.timeout_s,
             )
         except FalFehler:
@@ -433,3 +543,24 @@ class Generator:
 
 def default_model() -> str:
     return os.environ.get("MOVE_FAL_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
+
+
+def default_bild_model() -> str:
+    return (
+        os.environ.get("MOVE_FAL_BILD_MODEL", DEFAULT_BILD_MODEL).strip()
+        or DEFAULT_BILD_MODEL
+    )
+
+
+def modell_fuer(mit_bild: bool) -> str:
+    """Welches Modell eine Einstellung bekommt.
+
+    MOVE_FAL_MODEL gilt bewusst NICHT fuer den Bildpfad. Das sieht zunaechst
+    inkonsequent aus, ist aber der Punkt: wer MOVE_FAL_MODEL auf ein
+    Text-zu-Video-Modell setzt, wuerde damit sonst jede Figur mit Referenzbild
+    still entwerten -- der Endpunkt kennt image_url nicht. Der Bildpfad hat
+    deshalb seinen eigenen Schalter, MOVE_FAL_BILD_MODEL.
+
+    Je Job schlaegt das Modellfeld der Einstellung ohnehin beides.
+    """
+    return default_bild_model() if mit_bild else default_model()

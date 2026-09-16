@@ -21,7 +21,7 @@ from pathlib import Path
 
 from .assembler import FramePlan, RenderSettings, assemble
 from .extraktion import template_aus_video
-from .generierung import Anfrage, Generator, default_model
+from .generierung import Anfrage, Generator, modell_fuer
 from .placeholders import create as create_placeholder
 from .repository import Clip, ExtractJob, Figur, RenderJob, Repository
 from .templates import CutTemplate
@@ -437,7 +437,10 @@ class Worker:
             sekunden=float(sekunden),
             breite=self.settings.width,
             height=self.settings.height,
-            model=clip.model.strip() or default_model(),
+            # Das Modell haengt daran, OB ein Referenzbild mitgeht: ein
+            # Text-zu-Video-Endpunkt kennt image_url nicht, und die Figur
+            # waere bezahlt und wirkungslos. Siehe modell_fuer.
+            model=clip.model.strip() or modell_fuer(referenz_bild is not None),
             referenz_bild=referenz_bild,
             seed=seed,
         )

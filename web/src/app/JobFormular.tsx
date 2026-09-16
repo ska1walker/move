@@ -322,9 +322,11 @@ export default function JobFormular({
 
           <label className="feld" htmlFor="model">
             <span>
-              Modell — leer heißt: die Vorgabe aus den App-Einstellungen
-              (<code>MOVE_FAL_MODEL</code>), und ist auch die leer, dann
-              <code> fal-ai/ltx-video</code>
+              Modell für alle Einstellungen — leer heißt: die Vorgabe aus den
+              App-Einstellungen, und die hängt davon ab, ob eine Einstellung
+              ein Referenzbild mitbringt. Ohne Bild
+              <code> fal-ai/ltx-video</code>, mit Bild
+              <code> fal-ai/ltx-2/image-to-video</code>
             </span>
             <input
               id="model"
@@ -349,20 +351,37 @@ export default function JobFormular({
             <ul>
               <li>das Feld oben, je Job</li>
               <li>
-                sonst <code>MOVE_FAL_MODEL</code> aus den App-Einstellungen von
-                Olares
+                sonst die App-Einstellung, und zwar je nach Einstellung eine
+                andere: <code>MOVE_FAL_BILD_MODEL</code> für alles mit
+                Referenzbild, <code>MOVE_FAL_MODEL</code> für alles ohne
               </li>
               <li>
-                sonst <code>fal-ai/ltx-video</code>, die eingebaute Vorgabe
+                sonst die eingebauten Vorgaben,
+                <code> fal-ai/ltx-2/image-to-video</code> mit Bild und
+                <code> fal-ai/ltx-video</code> ohne
               </li>
             </ul>
+            <p>
+              <strong>Warum zwei Vorgaben und nicht eine.</strong>{' '}
+              <code>fal-ai/ltx-video</code> ist ein Text-zu-Video-Modell und
+              hat gar keinen Eingang für ein Bild. Eine Figur mit Referenzbild
+              dorthin zu schicken wäre der unangenehmste Fehler, den diese
+              Funktion haben kann: er erzeugt ein Video, keinen Fehler. Der
+              Aufruf wird abgerechnet, und das Gesicht ist trotzdem in jeder
+              Einstellung ein anderes. Deshalb entscheidet das Referenzbild
+              über das Modell — und <code>MOVE_FAL_MODEL</code> greift
+              absichtlich nicht in den Bildpfad.
+            </p>
             <p className="leise">
-              Welche Modelle es bei fal gibt und wie ihre Eingaben heißen,
-              konnte in diesem Projekt nicht nachgelesen werden — fal.ai ist
-              aus der Bauumgebung gesperrt. Passt ein Name oder ein Argument
-              nicht, scheitert der Job <strong>mit der vollständigen Antwort
-              von fal</strong> in der Job-Liste. Das ist Absicht: daraus lässt
-              sich der richtige Name ablesen, statt zu raten.
+              Gemessen ist daran: dass <code>fal-ai/ltx-video</code> existiert
+              und Text zu Video macht, und dass ein
+              Bild-zu-Video-Endpunkt <code>image_url</code> erwartet. Nicht
+              gemessen ist das vollständige Schema irgendeines Modells — fal.ai
+              ist aus der Bauumgebung gesperrt, nur der Suchindex kam durch.
+              Passt ein Name oder ein Argument nicht, scheitert der Job
+              <strong> mit der vollständigen Antwort von fal</strong> in der
+              Job-Liste. Das ist Absicht: daraus lässt sich der richtige Name
+              ablesen, statt zu raten.
             </p>
           </details>
 

@@ -3,14 +3,16 @@
 Der letzte Schritt, und der einzige, den kein Automat übernehmen kann: die
 Box steht im lokalen Netz, die Anmeldung braucht Browser und TOTP.
 
-**Zielversion ist `26.9.6`.** Woher die Sprünge kommen, kurz:
+**Zielversion ist `26.9.7`.** Woher die Sprünge kommen, kurz:
 
 | Version | Was sie behebt |
 |---|---|
 | 26.9.2 | Worker rendert ohne `apiVersion` — nicht installierbar |
 | 26.9.3 | fehlendes `type: system` — Box lehnt mit *„Incompatible with this Olares version"* ab |
 | 26.9.4 | Oberfläche konnte nichts: kein Upload, keine Extraktion, keine Figuren |
-| 26.9.6 | Namensfeld verschluckte die Eingabe (Autofill), plus Hinweise zum Referenzbild |
+| 26.9.5 | Namensfeld verschluckte die Eingabe (Autofill), plus Hinweise zum Referenzbild |
+| 26.9.6 | drei Mustertemplates, damit die App beim ersten Öffnen nicht leer ist |
+| 26.9.7 | Figur mit Referenzbild ging an ein Text-zu-Video-Modell — bezahlt und wirkungslos |
 
 **Der Tabelle unten folgen, nicht dieser Zeile:** welche Version im Katalog
 liegt, ändert sich schneller als dieses Dokument. `market get` fragen und
@@ -85,15 +87,22 @@ entsteht.
 
 ### Beide Wege: die drei Werte
 
-Olares fragt drei Werte ab, **alle optional**:
+Olares fragt vier Werte ab, **alle optional**:
 
 | Name | Typ | leer lassen heißt |
 |---|---|---|
 | `FAL_KEY` | password | keine Generierung; Platzhalter und eigene Uploads |
-| `MOVE_FAL_MODEL` | string | Vorgabe aus `generierung.py` |
+| `MOVE_FAL_MODEL` | string | `fal-ai/ltx-video`, nur für Einstellungen **ohne** Referenzbild |
+| `MOVE_FAL_BILD_MODEL` | string | `fal-ai/ltx-2/image-to-video`, für Einstellungen **mit** Referenzbild |
 | `MOVE_FAL_MAX_CLIPS` | int | 12 |
 
-**Beim ersten Mal alle drei leer lassen.** Die Pipeline läuft ohne einen
+Die Trennung der beiden Modelle ist kein Komfort: `fal-ai/ltx-video` ist ein
+**Text**-zu-Video-Endpunkt und kennt `image_url` nicht. Eine Figur mit
+Referenzbild dorthin zu schicken heißt: bezahlt, und das Gesicht ist in jeder
+Einstellung ein anderes. `MOVE_FAL_MODEL` gilt deshalb absichtlich nicht für
+den Bildpfad.
+
+**Beim ersten Mal alle vier leer lassen.** Die Pipeline läuft ohne einen
 einzigen Modellaufruf durch; ein fehlender Schlüssel darf die Installation
 nicht aufhalten, und genau das ist zu prüfen.
 
@@ -107,7 +116,7 @@ kubectl get pods -n move-<nutzer> \
 ```
 
 Erwartet: zwei Pods, `move` und `moveworker`, beide `true`, beide auf
-`ghcr.io/ska1walker/…:26.9.6`. Steht dort eine ältere Version, ist nicht die
+`ghcr.io/ska1walker/…:26.9.7`. Steht dort eine ältere Version, ist nicht die
 gelaufen, die hier gemeint ist — zurück zu Schritt 1, nicht weitermachen.
 
 Die Adresse ist `https://3734a903<index>.<nutzer>.<zone>` — `3734a903` ist
@@ -131,7 +140,7 @@ Vier Dinge stehen im Repo als unverifiziert und entscheiden sich hier:
   nicht mehr, sondern ignoriert ihn ausdrücklich. Zu prüfen bleibt, ob
   `Remote-User` am Pod ankommt. Kommt er nicht, ist die App ohne Identität,
   und das fällt in der Oberfläche als „fehlt" auf, nicht still.
-- **Ob `olaresEnv` nach der Installation änderbar ist.** Alle drei envs
+- **Ob `olaresEnv` nach der Installation änderbar ist.** Alle vier envs
   tragen `applyOnChange: true`; damit sollte eine Schlüsselrotation ohne
   Neuinstallation gehen.
 - **Ob die Probes beim Installieren mutiert werden.**

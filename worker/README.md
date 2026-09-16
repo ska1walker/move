@@ -9,11 +9,11 @@ Kein Modell, keine Inferenz. Nur Standardbibliothek und ffmpeg.
 ```bash
 # Baukontext ist das Repo-Wurzelverzeichnis, nicht worker/ --
 # db/schema.sql liegt ausserhalb und wird von Web und Worker gelesen.
-docker build -f worker/Dockerfile -t moveworker:26.9.6 .
+docker build -f worker/Dockerfile -t moveworker:26.9.7 .
 
-docker run --rm -v /pfad/zu/appdata:/app/data moveworker:26.9.6 \
+docker run --rm -v /pfad/zu/appdata:/app/data moveworker:26.9.7 \
   enqueue --template /app/examples/beat-8s.json
-docker run --rm -v /pfad/zu/appdata:/app/data moveworker:26.9.6
+docker run --rm -v /pfad/zu/appdata:/app/data moveworker:26.9.7
 ```
 
 Der Standardbefehl ist `work`: die Polling-Schleife auf der Job-Tabelle. Der
@@ -280,12 +280,48 @@ Prompt, Laenge und Format; liegt die Datei unter `data/generated/<hash>.mp4`,
 wird sie genommen. Ein Test prueft, dass ein zweiter Lauf fal NICHT erneut
 ruft.
 
-**Das Modell ist nicht fest verdrahtet.** Welche Video-Modelle es bei fal gibt
-und wie ihre Ausgabe aussieht, konnte ich nicht nachsehen: fal.ai und
-docs.fal.ai sind vom Egress-Proxy gesperrt. Die Antwort wird deshalb tolerant
-nach einer URL durchsucht (`video`, `output`, `file`, `result`, `url`, auch
-verschachtelt und in Listen). Findet sich keine, scheitert der Job **mit der
-Antwort im Text** statt zu raten.
+**Das Modell ist nicht fest verdrahtet, und es sind ZWEI.** Die Ausgabeform
+eines Modells konnte ich nicht nachlesen: fal.ai und docs.fal.ai sind vom
+Egress-Proxy gesperrt (`CONNECT tunnel failed, response 403`). Die Antwort
+wird deshalb tolerant nach einer URL durchsucht (`video`, `output`, `file`,
+`result`, `url`, auch verschachtelt und in Listen). Findet sich keine,
+scheitert der Job **mit der Antwort im Text** statt zu raten.
+
+Zwei Modelle, weil die Wahl nicht kosmetisch ist: `fal-ai/ltx-video`
+existiert, ist aber ein **Text**-zu-Video-Endpunkt und hat keinen Eingang fuer
+ein Bild. Eine Figur mit Referenzbild dorthin zu schicken ergibt ein Video und
+keinen Fehler -- bezahlt, und das Gesicht wechselt trotzdem in jeder
+Einstellung. `modell_fuer` entscheidet deshalb am Referenzbild:
+
+| Einstellung | Umgebung | Vorgabe |
+|---|---|---|
+| ohne Referenzbild | `MOVE_FAL_MODEL` | `fal-ai/ltx-video` |
+| mit Referenzbild | `MOVE_FAL_BILD_MODEL` | `fal-ai/ltx-2/image-to-video` |
+
+`MOVE_FAL_MODEL` greift absichtlich **nicht** in den Bildpfad: ein Textmodell
+dort entwertete jede Figur still. Das Modellfeld je Job schlaegt beides.
+
+### Was an fal-client 1.0.1 gemessen ist
+
+Nicht der Doku entnommen, sondern dem Quelltext genau der Version, die
+`requirements.txt` festnagelt -- `pip download fal-client --no-binary :all:`
+und gelesen:
+
+- `subscribe(application, arguments, *, ..., start_timeout=None,
+  client_timeout=None)`. `arguments` ist `POSITIONAL_OR_KEYWORD`,
+  `client_timeout` ist `KEYWORD_ONLY`. Der Aufruf hier nutzt beide als
+  Schluesselwort; ein Test nagelt die Signatur fest und schlaegt fehl, wenn
+  die Bibliothek sie aendert.
+- Der Schluessel wird **lazy** geholt (`SyncClient._auth` ist eine
+  `cached_property`). `import fal_client` ohne `FAL_KEY` laeuft durch --
+  nachgemessen, und wichtig, weil `FAL_KEY` im Manifest optional ist.
+- Neben `FAL_KEY` akzeptiert der Client `FAL_KEY_ID` + `FAL_KEY_SECRET`.
+  `fal_key()` zaehlt das Paar mit, und `_ohne_geheimnis` raeumt auch
+  `FAL_KEY_SECRET` aus Meldungen.
+
+An den Modellseiten (ueber den Suchindex, der durchkommt, nicht ueber den
+gesperrten Abruf) sind `image_url` und `seed` als echte Argumentnamen belegt.
+**Nicht** belegt ist das vollstaendige Schema irgendeines Video-Modells.
 
 ### Nur http und https
 
@@ -301,10 +337,25 @@ Bildgroesse steht im Template und ist Teil dessen, was es ueber den Schnitt
 aussagt. Die Zusammensetzung steht im Log, damit sichtbar ist, was gefragt
 wurde.
 
-Die Laenge wird auf ganze Sekunden **aufgerundet**: Modelle nehmen meist
-ganzzahlige Laengen, und ein zu kurzer Clip ist teuer -- der Assembler lehnt
-ihn dann ab (`check_clips`, mit Zahlen), und die Generierung waere bezahlt und
-unbrauchbar.
+Die Laenge geht als **ganze Sekunde, aufgerundet** -- und als `int`, nicht als
+`float`. Beides hat einen Grund:
+
+- **Aufgerundet**, weil ein zu kurzer Clip teuer ist: der Assembler lehnt ihn
+  ab (`check_clips`, mit Zahlen), und die Generierung waere bezahlt und
+  unbrauchbar. `round(1.996, 2)` ergibt 2.0 und ist damit 4 ms zu kurz.
+- **Ganzzahlig**, weil aus 3.0 in JSON die Zahl `3.0` wird, und ein Schema,
+  das eine ganze Sekunde erwartet, die ablehnt. `assertEqual(3, 3.0)` ist in
+  Python wahr, der Typ braucht also eine eigene Zusicherung -- die gibt es.
+
+Der Name und die Form sind umstellbar, weil die Modelle sich hier wirklich
+unterscheiden (ein Modellbeispiel schickt `"8"` als Zeichenkette, andere eine
+Zahl, manche nehmen nur feste Werte):
+
+| Umgebung | Wirkung |
+|---|---|
+| `MOVE_FAL_DAUER_ARGUMENT` | anderer Argumentname als `duration` |
+| `MOVE_FAL_DAUER_TEXT=1` | als Zeichenkette senden |
+| `MOVE_FAL_DAUER_AUS=1` | gar nicht senden |
 
 ### Obergrenze, weil jeder Aufruf Geld kostet
 
