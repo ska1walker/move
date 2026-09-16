@@ -339,7 +339,28 @@ done
 section "Container-Ressourcen passen ins Manifest-Budget"
 
 if command -v helm >/dev/null 2>&1 && [[ -f "$VALUES_STUB" ]]; then
-  SUMS="$(helm template "$APP" "$CHART_DIR/" -f "$VALUES_STUB" 2>/dev/null | awk '
+  # Erst rendern, DANN rechnen -- und den Fehlerkanal aufheben statt ihn
+  # wegzuwerfen.
+  #
+  # Hier stand `helm template … 2>/dev/null | awk …` in einer Zuweisung. Unter
+  # `set -e` mit `pipefail` ist das eine Falle: scheitert helm, scheitert die
+  # Pipeline, die Zuweisung scheitert, und das Skript stirbt an dieser Stelle
+  # mit exit 1 -- ohne eine einzige Zeile. In CI war genau das zu sehen: der
+  # Abschnittskopf, 36 ms spaeter "Process completed with exit code 1", und
+  # der Grund lag in dem stderr, das hier verworfen wurde.
+  #
+  # CLAUDE.md sagt es allgemein: "Still geschluckte Fehler verbergen
+  # Plattformfehler. Mindestens mit Metadaten loggen." Ein Guard, der beim
+  # Scheitern schweigt, ist schlechter als keiner -- er kostet einen
+  # CI-Durchlauf, um herauszufinden, DASS er es war.
+  RENDER="$(mktemp)"
+  HELM_FEHLER="$(mktemp)"
+  if ! helm template "$APP" "$CHART_DIR/" -f "$VALUES_STUB" >"$RENDER" 2>"$HELM_FEHLER"; then
+    fail "helm template ist gescheitert -- Ressourcen nicht pruefbar:"
+    sed 's/^/      /' "$HELM_FEHLER" >&2
+    rm -f "$RENDER" "$HELM_FEHLER"
+  else
+  SUMS="$(awk '
     function tocpu(v) { if (v ~ /m$/) { sub(/m$/,"",v); return v+0 } else { return v*1000 } }
     function tomem(v) {
       if (v ~ /Gi$/) { sub(/Gi$/,"",v); return v*1024 }
@@ -362,7 +383,7 @@ if command -v helm >/dev/null 2>&1 && [[ -f "$VALUES_STUB" ]]; then
     }
     inres && !/^[[:space:]]*(requests|limits|cpu|memory):/ { inres=0; mode="" }
     END { printf "%d %d %d %d", rc, lc, rm, lm }
-  ')"
+  ' "$RENDER")"
   read -r SUM_RC SUM_LC SUM_RM SUM_LM <<< "$SUMS"
 
   budget() {
@@ -389,6 +410,31 @@ if command -v helm >/dev/null 2>&1 && [[ -f "$VALUES_STUB" ]]; then
   check_sum "limits.cpu vs limitedCpu"          "$SUM_LC" "$(budget limitedCpu)"     "m"
   check_sum "requests.memory vs requiredMemory" "$SUM_RM" "$(budget requiredMemory)" "Mi"
   check_sum "limits.memory vs limitedMemory"    "$SUM_LM" "$(budget limitedMemory)"  "Mi"
+
+  # ---------------------------------------------------------------------
+  # Jedes gerenderte Dokument braucht apiVersion und kind
+  #
+  # NEU, UND AUS EINEM EIGENEN FEHLER. Eine rechte Trimm-Marke (`-}}`) an
+  # einer Zuweisung am Dateianfang frisst den Zeilenumbruch danach und klebt
+  # `apiVersion: apps/v1` an das Ende der Kommentarzeile darueber. Das
+  # Ergebnis ist gueltiges YAML ohne apiVersion -- helm meckert nicht, `yq`
+  # meckert nicht, und aufgefallen waere es erst auf der Box.
+  #
+  # Gezaehlt wird am Render, nicht an der Quelle: in der Quelle STEHT
+  # apiVersion ja. Nur das Render zeigt, ob es auch dort ankommt.
+  # ---------------------------------------------------------------------
+  DOKS="$(grep -c '^---$' "$RENDER" || true)"
+  APIV="$(grep -cE '^apiVersion:' "$RENDER" || true)"
+  KIND="$(grep -cE '^kind:' "$RENDER" || true)"
+  if [[ "$APIV" -eq "$KIND" && "$APIV" -gt 0 ]]; then
+    ok "Render: $APIV Dokumente mit apiVersion und kind am Zeilenanfang"
+  else
+    fail "Render: $APIV apiVersion gegen $KIND kind (bei $DOKS Trennern) — eine Trimm-Marke verschluckt eine Zeile"
+    grep -nE '^#.*apiVersion:|^#.*kind:' "$RENDER" | sed 's/^/      /' >&2 || true
+  fi
+
+    rm -f "$RENDER" "$HELM_FEHLER"
+  fi
 else
   skip "helm oder Stub fehlt — Ressourcen-Guard uebersprungen"
 fi

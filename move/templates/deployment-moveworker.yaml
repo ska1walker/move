@@ -13,7 +13,16 @@
 # ERSTinstallation zurueckspielt — auf einer Bestandsbox fehlt der Block, und
 # .Values.olaresEnv.X waere dort ein nil-Pointer. Dieselbe Form benutzt
 # openwebui im offiziellen Katalog.
-{{- $oe := .Values.olaresEnv | default dict -}}
+#
+# LINKS trimmen, rechts NICHT. Hier stand `-}}`, und das war ein Fehler: die
+# rechte Trimm-Marke frisst den Zeilenumbruch NACH der Zuweisung, und dann
+# klebt `apiVersion: apps/v1` an das Ende der Kommentarzeile darueber. Das
+# Deployment rendert damit OHNE apiVersion -- syntaktisch gueltiges YAML, also
+# beschwert sich niemand, aber die API kann damit nichts anfangen.
+# Gemessen mit text/template, nicht geraten:
+#   `-}}`  ->  "# ... Katalog.apiVersion: apps/v1"
+#   `}}`   ->  "# ... Katalog." / "apiVersion: apps/v1"
+{{- $oe := .Values.olaresEnv | default dict }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -87,16 +96,26 @@ spec:
             # nebeneinander laden dazu ein, beim naechsten env die falsche zu
             # kopieren.
             #
-            # KORREKTUR EINER FRUEHEREN BEHAUPTUNG. Der else-Zweig steht hier
-            # als {{ "" | quote }} und nicht als nacktes "". Begruendet hatte
-            # ich das mit "das literale "" steht ausserhalb der Klammern und
-            # wird immer ausgegeben" -- das ist FALSCH. Go-Templates steuern
-            # den Text zwischen {{if}}, {{else}} und {{end}}; darauf beruht
-            # jedes Helm-Chart. Die Doppelausgabe kam aus dem
+            # KORREKTUR EINER FRUEHEREN BEHAUPTUNG. Der else-Zweig steht als
+            # eine Klammer mit leerem String und quote, nicht als nacktes "".
+            # Begruendet hatte ich das mit "das literale "" steht ausserhalb
+            # der Klammern und wird immer ausgegeben" -- das ist FALSCH.
+            # Go-Templates steuern den Text zwischen if, else und end; darauf
+            # beruht jedes Helm-Chart. Die Doppelausgabe kam aus dem
             # Minimal-Renderer, mit dem hier ohne helm geprueft wird, und ich
             # habe sie Helm zugeschrieben. Der Renderer kann es jetzt.
             # Die Form bleibt, weil sie eindeutig ist -- aber nicht, weil sie
             # noetig waere.
+            #
+            # UND DIESER KOMMENTAR HAT DAS CHART SCHON EINMAL GEBROCHEN. Er
+            # nannte if, else und end in doppelten geschweiften Klammern, um
+            # sie zu zitieren. Helm liest die Datei aber als Go-Template und
+            # sieht keine YAML-Kommentare -- eine leere if-Klammer ist fuer
+            # den Parser eine leere if-Klammer, auch hinter einem #:
+            #   Error: parse error at (deployment-moveworker.yaml:94):
+            #          missing value for if
+            # Kein Kommentar in einer Template-Datei darf eine Aktion in
+            # doppelten geschweiften Klammern zitieren. Namen ausschreiben.
             #
             # Der Schluessel selbst steht an keiner Stelle im Repo. Leer heisst
             # keine Generierung -- ein Job mit source 'fal' scheitert dann mit
